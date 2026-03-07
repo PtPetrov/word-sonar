@@ -33,6 +33,20 @@ function parseWordList(filePath: string): string[] {
     .filter(Boolean);
 }
 
+function readVectorBuffer(dataPath: string): Buffer {
+  const splitPartPaths = fs
+    .readdirSync(dataPath)
+    .filter((fileName) => /^vectors\.f32\.part\d+$/u.test(fileName))
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
+    .map((fileName) => path.join(dataPath, fileName));
+
+  if (splitPartPaths.length > 0) {
+    return Buffer.concat(splitPartPaths.map((filePath) => fs.readFileSync(filePath)));
+  }
+
+  return fs.readFileSync(path.join(dataPath, "vectors.f32"));
+}
+
 function shuffleWords<T>(input: T[]): T[] {
   const words = [...input];
   for (let i = words.length - 1; i > 0; i -= 1) {
@@ -145,11 +159,10 @@ export class RankEngine {
     ]);
     const targetsPath = path.join(input.dataPath, "targets_10k.txt");
     const wordIndexPath = path.join(input.dataPath, "word_index.json");
-    const vectorsPath = path.join(input.dataPath, "vectors.f32");
     const profanityPath = path.join(input.dataPath, "profanity.txt");
     const targetBlocklistPath = path.join(input.dataPath, "target_blocklist.txt");
 
-    const requiredPaths = [vocabPath, targetsPath, wordIndexPath, vectorsPath];
+    const requiredPaths = [vocabPath, targetsPath, wordIndexPath];
     for (const requiredPath of requiredPaths) {
       if (!fs.existsSync(requiredPath)) {
         throw new Error(`Missing required data file: ${requiredPath}`);
@@ -187,7 +200,7 @@ export class RankEngine {
     // - little-endian float32 values
     // - row-major layout
     // - no header, shape [vocab_size, vector_dim]
-    const vectorBuffer = fs.readFileSync(vectorsPath);
+    const vectorBuffer = readVectorBuffer(input.dataPath);
     if (vectorBuffer.byteLength % 4 !== 0) {
       throw new Error("vectors.f32 byte length must be divisible by 4");
     }
