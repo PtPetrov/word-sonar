@@ -1,0 +1,117 @@
+Background assumptions:
+- The game should behave like Contexto at the algorithm level:
+  - words are sorted by AI-based similarity to the secret word
+  - the secret word is rank 1
+  - guesses show their position in that ranking
+  - similarity is based on the context in which words are used, i.e. embedding similarity rather than lexical similarity
+- Public descriptions of Contexto say the algorithm analyzes many texts and ranks words by contextual similarity, and the creator’s public technical write-up associates the game with GloVe-style embeddings. Treat that as the behavioral inspiration, not as a requirement to copy proprietary implementation details. :contentReference[oaicite:0]{index=0}
+
+My dataset:
+- vocab_100k_words.txt contains 100,000 valid vocabulary words
+- targets_10k.txt contains 10,000 selectable secret target words
+- vectors.f32 contains 100,000 word vectors
+- each vector has dimension 300
+- word_index.json maps each word to its row index in the embedding matrix
+
+Algorithm requirements:
+
+1. Core semantic model
+- Treat every vocabulary word as a fixed 300-dimensional embedding vector
+- The algorithm must use vector similarity to measure semantic closeness
+- The intended semantic behavior is distributional/contextual similarity: words are considered close when they tend to occur in similar contexts in text corpora, consistent with how GloVe-style embeddings work. :contentReference[oaicite:1]{index=1}
+- Do not use letter overlap, edit distance, stemming, synonym dictionaries, or manual category graphs as the main ranking signal
+
+2. Similarity metric
+- Use cosine similarity as the primary ranking metric
+- Normalize all vectors before comparison so similarity can be computed consistently and efficiently
+- All ranking decisions must be based on this semantic similarity score
+
+3. Puzzle generation
+- A puzzle consists of one secret target word chosen from targets_10k.txt
+- Every target must also exist in the vocabulary and in the word index
+- The engine must support:
+  - choosing a specific target directly
+  - choosing a random target
+  - choosing a deterministic daily target based on date seed
+- The daily target selection must be stable and reproducible for all users on the same day
+
+4. Ranking logic
+- Once a target word is selected, compute its similarity against every valid vocabulary word in the full 100,000-word vocabulary
+- Sort all vocabulary words by similarity to the target in descending order
+- Assign rank 1 to the secret target itself
+- Assign rank 2 to the next closest word
+- Continue until all vocabulary words have ranks
+- The rank shown to the player must be the guessed word’s exact position in the full sorted vocabulary list
+- Do not rank only within the 10,000 targets; ranking must be against the full 100,000-word playable vocabulary
+
+5. Guess evaluation
+- A guess must be normalized before lookup:
+  - trim whitespace
+  - lowercase
+- If the guessed word is not in the vocabulary, return a clear invalid-word result
+- If the guessed word is in the vocabulary, return:
+  - the normalized guess
+  - its exact rank
+  - whether it is the correct answer
+- A correct answer is any guess whose rank is 1
+
+6. Behavioral expectations
+- The engine should produce Contexto-like behavior:
+  - semantically related words can rank highly even if they are not direct synonyms
+  - topical neighbors should often appear close
+  - contextually associated words may outrank intuitive human synonyms in some cases
+- The system should reflect contextual proximity, not dictionary-style equivalence. Public descriptions of Contexto say words are sorted by AI similarity and that the score reflects context of use across many texts. :contentReference[oaicite:2]{index=2}
+
+7. Tie-breaking and determinism
+- Ranking must be deterministic
+- If two words have equal or effectively identical similarity scores, apply a stable tie-break rule
+- Prefer a deterministic tie-break based on vocabulary index or another fixed ordering rule
+- The same target and same dataset must always produce the same rank for the same word
+
+8. Performance strategy
+- The engine should be designed for production use with 100,000 vocabulary words and 300-dimensional vectors
+- It must support two operating modes:
+  - on-demand ranking: compute full similarity ranking when a puzzle starts
+  - cached/precomputed ranking: store results for targets that are used frequently
+- Design the architecture so Codex can choose the most practical implementation while preserving exact ranking behavior
+- The engine should be optimized around:
+  - loading and normalizing vectors efficiently
+  - reusing normalized vectors
+  - minimizing repeated expensive computation when a target repeats
+  - making guess evaluation constant-time after a target’s rank map is built
+
+9. Internal data flow
+The intended algorithm flow is:
+- load vocabulary
+- load target list
+- load word index
+- load embedding matrix
+- verify shapes and consistency
+- normalize all vectors
+- select target
+- compute target-to-vocabulary similarity scores across the entire vocabulary
+- sort scores descending
+- build a rank lookup structure for the selected target
+- evaluate guesses by direct lookup into that rank structure
+
+10. Validation and consistency checks
+- Verify that:
+  - vocabulary count matches vector row count
+  - vector dimension is exactly 300
+  - every target exists in the vocabulary
+  - every vocabulary word exists in word_index.json
+- Fail clearly if any structural mismatch exists
+- Treat file consistency and deterministic ranking as important requirements
+
+11. Repeat guess handling
+- The engine must support tracking previous guesses
+- If the same guess is submitted again, return the same previous result consistently
+- The engine should make it easy for higher-level app logic to store and sort guess history, but do not build UI for that
+
+12. Output contract
+Design the algorithm layer so it can provide:
+- puzzle creation result
+- guess validation result
+- guess rank result
+- solved/not solved state
+- optional metadata helpful for debugging or analytics, but do not expose raw vector internals unless needed

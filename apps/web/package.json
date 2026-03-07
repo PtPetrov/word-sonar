@@ -1,0 +1,30 @@
+{
+  "name": "@word-hunt/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build --webpack",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@word-hunt/db": "file:../../packages/db",
+    "@word-hunt/shared": "file:../../packages/shared",
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "socket.io-client": "4.8.2",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.1",
+    "eslint-config-next": "16.1.6",
+    "typescript": "5.9.3"
+  }
+}

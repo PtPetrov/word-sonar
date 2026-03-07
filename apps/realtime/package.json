@@ -1,0 +1,28 @@
+{
+  "name": "@word-hunt/realtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "tsx src/server.ts",
+    "lint": "echo 'realtime lint skipped'",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@word-hunt/db": "file:../../packages/db",
+    "@word-hunt/shared": "file:../../packages/shared",
+    "dotenv": "16.6.1",
+    "express": "5.1.0",
+    "socket.io": "4.8.2"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.5",
+    "@types/node": "24.10.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}

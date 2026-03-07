@@ -1,0 +1,20 @@
+# Minimal starter list for local pipeline runs.
+# Replace/extend with a proper profanity dataset before production builds.
+# Keep one lowercase token per line.
+
+asshole
+bastard
+bitch
+bullshit
+crap
+cunt
+damn
+dick
+fuck
+motherfucker
+nigga
+nigger
+piss
+shit
+slut
+whore

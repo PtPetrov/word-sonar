@@ -1,0 +1,25 @@
+{
+  "name": "word-hunt",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build:deps": "npm run build --workspace=@word-hunt/shared && npm run build --workspace=@word-hunt/db",
+    "dev": "npm run build:deps && npm-run-all --parallel dev:realtime dev:web",
+    "dev:web": "npm run dev --workspace=@word-hunt/web",
+    "dev:realtime": "npm run dev --workspace=@word-hunt/realtime",
+    "build": "npm run build:deps && npm run build --workspace=@word-hunt/realtime && npm run build --workspace=@word-hunt/web",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspace=@word-hunt/shared && npm run typecheck --workspace=@word-hunt/db && npm run typecheck --workspace=@word-hunt/realtime && npm run typecheck --workspace=@word-hunt/web",
+    "prisma:generate": "npm run prisma:generate --workspace=@word-hunt/db",
+    "prisma:migrate": "npm run prisma:migrate --workspace=@word-hunt/db",
+    "prisma:deploy": "npm run prisma:deploy --workspace=@word-hunt/db"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MatchMode {
+  solo
+  coop
+  one_v_one
+  three_v_three
+}
+
+enum MatchStatus {
+  active
+  finished
+  aborted
+}
+
+enum RoomStatus {
+  forming
+  countdown
+  in_game
+  finished
+  aborted
+}
+
+model User {
+  id          String           @id @default(uuid()) @db.Uuid
+  displayName String           @map("display_name") @db.VarChar(20)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  createdRooms Room[]          @relation("RoomHost")
+  matches     MatchPlayer[]
+  guesses     Guess[]
+  soloEntries DailySoloEntry[]
+
+  @@map("users")
+}
+
+model Room {
+  code            String     @id @db.VarChar(6)
+  createdAt       DateTime   @default(now()) @map("created_at")
+  createdByUserId String     @map("created_by_user_id") @db.Uuid
+  status          RoomStatus
+  mode            MatchMode
+  host            User       @relation("RoomHost", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@map("rooms")
+}
+
+model Match {
+  id                String        @id @default(uuid()) @db.Uuid
+  mode              MatchMode
+  dictionaryVersion String        @map("dictionary_version")
+  targetWord        String        @map("target_word")
+  turnMs            Int           @map("turn_ms")
+  startedAt         DateTime      @default(now()) @map("started_at")
+  endedAt           DateTime?     @map("ended_at")
+  winnerTeamId      String?       @map("winner_team_id")
+  status            MatchStatus
+  dailyDate         DateTime?     @map("daily_date") @db.Date
+  players           MatchPlayer[]
+  guesses           Guess[]
+
+  @@index([startedAt])
+  @@index([dailyDate])
+  @@map("matches")
+}
+
+model MatchPlayer {
+  matchId   String   @map("match_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  teamId    String   @map("team_id")
+  isHost    Boolean  @default(false) @map("is_host")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([matchId, userId])
+  @@index([userId])
+  @@map("match_players")
+}
+
+model Guess {
+  id         String   @id @default(uuid()) @db.Uuid
+  matchId    String   @map("match_id") @db.Uuid
+  turnNumber Int      @map("turn_number")
+  userId     String   @map("user_id") @db.Uuid
+  teamId     String   @map("team_id")
+  word       String
+  rank       Int
+  createdAt  DateTime @default(now()) @map("created_at")
+  match      Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([matchId, createdAt])
+  @@index([matchId, turnNumber])
+  @@map("guesses")
+}
+
+model DailySoloEntry {
+  date         DateTime @db.Date
+  userId       String   @map("user_id") @db.Uuid
+  turnsToSolve Int      @map("turns_to_solve")
+  timeMs       Int      @map("time_ms")
+  createdAt    DateTime @default(now()) @map("created_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([date, userId])
+  @@index([date, turnsToSolve, timeMs])
+  @@map("leaderboard_daily_solo")
+}
