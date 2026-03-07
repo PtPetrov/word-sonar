@@ -7,7 +7,7 @@
   "types": "dist/server.d.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "npm run build --workspace=@word-hunt/shared && npm run build --workspace=@word-hunt/db && tsc -p tsconfig.json",
+    "build": "npm run build --workspace=@word-hunt/shared && npm run prisma:generate --workspace=@word-hunt/db && npm run build --workspace=@word-hunt/db && tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "lint": "echo 'realtime lint skipped'",
     "typecheck": "tsc -p tsconfig.json --noEmit"

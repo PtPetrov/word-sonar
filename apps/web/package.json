@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "npm run build --workspace=@word-hunt/shared && npm run build --workspace=@word-hunt/db && NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build --webpack",
+    "build": "npm run build --workspace=@word-hunt/shared && npm run prisma:generate --workspace=@word-hunt/db && npm run build --workspace=@word-hunt/db && NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
