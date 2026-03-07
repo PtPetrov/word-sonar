@@ -26,19 +26,18 @@ Required variables:
 
 ```env
 DATABASE_URL=${{Postgres.DATABASE_URL}}
-PORT=${{PORT}}
 CORS_ORIGIN=https://<your-web-domain>
 DICTIONARY_VERSION=v1_100k_words_2026_03
 TURN_MS_DEFAULT=15000
 COUNTDOWN_SECONDS=5
-DATA_PATH=/app/data
 VECTOR_DIM=300
 RECONNECT_GRACE_MS=30000
 ```
 
 Notes:
 
-- `DATA_PATH` must point at the checked-out repo data directory in the Railway container.
+- Railway injects `PORT` automatically. Do not hardcode it.
+- `DATA_PATH` is optional in this repo. Leave it unset first; the realtime service already resolves the monorepo `data/` directory correctly after build. If you explicitly set it, use `/app/data`.
 - After the web service gets a public domain, update `CORS_ORIGIN` to that exact HTTPS origin.
 
 ## 3. Configure the web service
