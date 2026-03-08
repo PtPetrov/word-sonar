@@ -98,6 +98,7 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
   const [guesses, setGuesses] = useState<RadarGuess[]>([]);
   const [gameWon, setGameWon] = useState<GameWon | null>(null);
   const [gameForfeit, setGameForfeit] = useState<GameForfeit | null>(null);
+  const [showGiveUpConfirm, setShowGiveUpConfirm] = useState(false);
   const [guessWord, setGuessWord] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -369,6 +370,15 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
       return;
     }
 
+    setShowGiveUpConfirm(true);
+  };
+
+  const confirmGiveUp = () => {
+    if (!room || room.status !== "in_game") {
+      return;
+    }
+
+    setShowGiveUpConfirm(false);
     getSocket().emit("arena:giveUp", { roomCode: room.roomCode });
   };
 
@@ -413,6 +423,24 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
             setNeedsGuestName(false);
           }}
         />
+      ) : null}
+
+      {showGiveUpConfirm ? (
+        <div className="solo-win-overlay" role="dialog" aria-modal="true" aria-labelledby="arena-give-up-title">
+          <div className="solo-win-modal">
+            <p className="solo-win-kicker">Confirm</p>
+            <h2 id="arena-give-up-title">Give up this match?</h2>
+            <p>This will end the current 1v1 game immediately.</p>
+            <div className="inline">
+              <button type="button" className="button ghost" onClick={() => setShowGiveUpConfirm(false)}>
+                Cancel
+              </button>
+              <button type="button" className="button primary" onClick={confirmGiveUp}>
+                Give Up
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <section className="solo-flow arena-flow">

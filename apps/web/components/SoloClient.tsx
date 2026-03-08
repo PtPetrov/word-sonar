@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { validateServerPayload, type GameWon, type GuessResult, type RoomState } from "@word-hunt/shared";
-import { GuestNameModal } from "@/components/GuestNameModal";
-import { createGuestIdentity, readGuestIdentity, saveGuestIdentity, type GuestIdentity } from "@/lib/guest";
+import { ensureSoloPlayerIdentity, type GuestIdentity } from "@/lib/guest";
 import { getSocket } from "@/lib/socket";
 
 type Direction = "first" | "closer" | "farther" | "same";
@@ -32,6 +31,15 @@ function isCompactViewport(): boolean {
   }
 
   return window.matchMedia("(max-width: 680px)").matches;
+}
+
+function getSofiaDateString(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Sofia",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
 }
 
 function toTimeLabel(epochMs: number): string {
@@ -116,30 +124,6 @@ function hashWord(word: string): number {
   return hash;
 }
 
-function createAmbientParticles(seedText: string, count: number): Array<{
-  id: string;
-  angle: number;
-  radius: number;
-  size: number;
-  delay: number;
-  duration: number;
-}> {
-  const base = hashWord(seedText || "radar");
-  return Array.from({ length: count }, (_, index) => {
-    const value = Math.abs(Math.sin(base * 0.0013 + index * 0.9347));
-    const value2 = Math.abs(Math.sin(base * 0.0021 + index * 1.531));
-    const value3 = Math.abs(Math.sin(base * 0.0008 + index * 2.117));
-    return {
-      id: `p-${index}`,
-      angle: Math.round(value * 360),
-      radius: 20 + Math.round(value2 * 74),
-      size: 2 + Math.round(value3 * 3),
-      delay: Number((value2 * 2.2).toFixed(2)),
-      duration: Number((1.8 + value * 2.6).toFixed(2))
-    };
-  });
-}
-
 function radarRadiusPercentForRank(rank: number, maxRank: number): number {
   const safeRank = Math.min(Math.max(1, rank), maxRank);
 
@@ -201,36 +185,34 @@ function errorMessageForGuess(code: string, attemptedWord: string): string | nul
 }
 
 export function SoloClient() {
-  const [guest, setGuest] = useState<GuestIdentity | null>(() => readGuestIdentity());
+  const [guest] = useState<GuestIdentity>(() => ensureSoloPlayerIdentity());
   const [room, setRoom] = useState<RoomState | null>(null);
   const [guesses, setGuesses] = useState<GuessEntry[]>([]);
   const [gameWon, setGameWon] = useState<GameWon | null>(null);
   const [guessWord, setGuessWord] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<FeedbackToast | null>(null);
-  const [isSavingLeaderboard, setIsSavingLeaderboard] = useState(false);
-  const [leaderboardSaveError, setLeaderboardSaveError] = useState<string | null>(null);
-  const [leaderboardSaved, setLeaderboardSaved] = useState(false);
-  const [savePromptOpen, setSavePromptOpen] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [showGiveUpConfirm, setShowGiveUpConfirm] = useState(false);
+  const [revealedWord, setRevealedWord] = useState<string | null>(null);
+  const [currentSofiaDate, setCurrentSofiaDate] = useState(() => getSofiaDateString());
 
   const requestedStartRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const roomCodeRef = useRef<string | null>(null);
-  const anonymousGuestRef = useRef<GuestIdentity | null>(null);
   const errorTimeoutRef = useRef<number | null>(null);
   const feedbackTimeoutRef = useRef<number | null>(null);
   const lastSubmittedGuessRef = useRef("");
-  const promptedForSaveRef = useRef(false);
+  const hintUsageDateRef = useRef(currentSofiaDate);
+  const effectiveHintsUsed = hintUsageDateRef.current === currentSofiaDate ? room?.hintsUsed ?? 0 : 0;
   const canRequestHint = Boolean(
     room &&
       room.status === "in_game" &&
       !gameWon &&
       guesses.length > 0 &&
-      room.hintsUsed < 3
+      effectiveHintsUsed < 3
   );
   const canRevealWord = Boolean(room && room.status === "in_game" && !gameWon);
-  const canSaveLeaderboard = Boolean(gameWon && room?.dailyDate);
 
   const focusGuessInput = (options?: { force?: boolean; scroll?: boolean }) => {
     if (!options?.force && isCompactViewport()) {
@@ -287,11 +269,7 @@ export function SoloClient() {
 
     const onConnect = () => {
       if (roomCodeRef.current) {
-        const currentIdentity = guest ?? anonymousGuestRef.current;
-        if (!currentIdentity) {
-          return;
-        }
-        socket.emit("room:join", { roomCode: roomCodeRef.current, user: currentIdentity });
+        socket.emit("room:join", { roomCode: roomCodeRef.current, user: guest });
         socket.emit("room:requestState", { roomCode: roomCodeRef.current });
         return;
       }
@@ -300,29 +278,23 @@ export function SoloClient() {
         return;
       }
       requestedStartRef.current = true;
-      socket.emit("solo:startDaily", guest ? { user: guest } : {});
+      socket.emit("solo:startDaily", { user: guest });
     };
 
     const onRoomState = (raw: unknown) => {
       const parsed = validateServerPayload("room:state", raw);
       if (parsed.success) {
         const roomChanged = parsed.data.roomCode !== roomCodeRef.current;
-        if (!guest && parsed.data.mode === "solo") {
-          const anonymousPlayer = parsed.data.players.find((player) => player.teamId === "SOLO");
-          if (anonymousPlayer) {
-            anonymousGuestRef.current = {
-              id: anonymousPlayer.id,
-              displayName: anonymousPlayer.displayName
-            };
-          }
-        }
         setRoom(parsed.data);
+        hintUsageDateRef.current = currentSofiaDate;
         roomCodeRef.current = parsed.data.roomCode;
 
         if (roomChanged) {
           setGuesses([]);
           setGameWon(null);
           setFeedback(null);
+          setShowGiveUpConfirm(false);
+          setRevealedWord(null);
         }
 
         clearTransientError();
@@ -377,6 +349,7 @@ export function SoloClient() {
       const parsed = validateServerPayload("game:won", raw);
       if (parsed.success) {
         setGameWon(parsed.data);
+        setRevealedWord(null);
         showFeedback({
           kind: "closer",
           title: "Target Captured",
@@ -391,11 +364,8 @@ export function SoloClient() {
         return;
       }
 
-      showFeedback({
-        kind: "neutral",
-        title: "Target Word",
-        detail: parsed.data.word
-      });
+      setShowGiveUpConfirm(false);
+      setRevealedWord(parsed.data.word);
     };
 
     const onError = (raw: unknown) => {
@@ -457,7 +427,15 @@ export function SoloClient() {
       socket.off("connect_error", onConnectError);
       socket.off("disconnect", onDisconnect);
     };
-  }, [guest]);
+  }, [currentSofiaDate, guest]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCurrentSofiaDate(getSofiaDateString());
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     const onPageHide = () => {
@@ -474,14 +452,6 @@ export function SoloClient() {
   }, []);
 
   const guessCount = guesses.length;
-  const bestGuess = useMemo(() => {
-    return guesses.reduce<GuessEntry | null>((best, guess) => {
-      if (!best || guess.rank < best.rank) {
-        return guess;
-      }
-      return best;
-    }, null);
-  }, [guesses]);
   const sortedGuesses = useMemo(() => {
     return [...guesses].sort((a, b) => {
       if (a.rank !== b.rank) {
@@ -531,10 +501,6 @@ export function SoloClient() {
     });
   }, [guesses]);
 
-  const ambientParticles = useMemo(() => {
-    return createAmbientParticles(room?.roomCode ?? "solo", 20);
-  }, [room?.roomCode]);
-
   const requestNewGame = () => {
     const socket = getSocket();
     const previousRoomCode = roomCodeRef.current;
@@ -547,10 +513,8 @@ export function SoloClient() {
     setGameWon(null);
     setGuesses([]);
     setRoom(null);
-    setLeaderboardSaveError(null);
-    setLeaderboardSaved(false);
-    setSavePromptOpen(false);
-    promptedForSaveRef.current = false;
+    setShowGiveUpConfirm(false);
+    setRevealedWord(null);
     roomCodeRef.current = null;
 
     if (previousRoomCode && socket.connected) {
@@ -564,7 +528,7 @@ export function SoloClient() {
     }
 
     requestedStartRef.current = true;
-    socket.emit("solo:startDaily", guest ? { user: guest } : {});
+    socket.emit("solo:startDaily", { user: guest });
   };
 
   const requestHint = () => {
@@ -576,6 +540,14 @@ export function SoloClient() {
   };
 
   const requestRevealWord = () => {
+    if (!canRevealWord || !room) {
+      return;
+    }
+
+    setShowGiveUpConfirm(true);
+  };
+
+  const confirmRevealWord = () => {
     if (!canRevealWord || !room) {
       return;
     }
@@ -595,71 +567,49 @@ export function SoloClient() {
     setGuessWord("");
   };
 
-  const saveLeaderboardResult = async (displayName: string) => {
-    if (!gameWon || !room?.dailyDate) {
-      return;
-    }
-
-    const identity = guest ?? createGuestIdentity(displayName);
-
-    saveGuestIdentity(identity);
-    setGuest(identity);
-    setIsSavingLeaderboard(true);
-    setLeaderboardSaveError(null);
-
-    try {
-      const response = await fetch("/api/leaderboard/daily-solo", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          date: room.dailyDate,
-          userId: identity.id,
-          displayName: identity.displayName,
-          turnsToSolve: gameWon.turns,
-          timeMs: gameWon.durationMs
-        })
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error ?? "Could not save leaderboard result");
-      }
-
-      setLeaderboardSaved(true);
-      setSavePromptOpen(false);
-    } catch (saveError) {
-      setLeaderboardSaveError(
-        saveError instanceof Error ? saveError.message : "Could not save leaderboard result"
-      );
-    } finally {
-      setIsSavingLeaderboard(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!canSaveLeaderboard || guest || leaderboardSaved || promptedForSaveRef.current) {
-      return;
-    }
-
-    promptedForSaveRef.current = true;
-    setSavePromptOpen(true);
-  }, [canSaveLeaderboard, guest, leaderboardSaved]);
+  const activeToast = error
+    ? { kind: "error" as const, title: "Notice", detail: error }
+    : feedback;
 
   return (
     <>
-      {savePromptOpen && canSaveLeaderboard && !leaderboardSaved ? (
-        <GuestNameModal
-          initialName={guest?.displayName ?? ""}
-          title="Save your solo result"
-          description="Enter a guest name to add this run to the daily leaderboard."
-          submitLabel={isSavingLeaderboard ? "Saving..." : "Save result"}
-          cancelLabel="Skip"
-          autoFocus
-          onCancel={() => setSavePromptOpen(false)}
-          onSave={saveLeaderboardResult}
-        />
+      {activeToast ? (
+        <div className="solo-toast-banner">
+          <div className={`toast toast-${activeToast.kind}`} role="status" aria-live="polite">
+            <strong>{activeToast.title}</strong>
+            <span>{activeToast.detail}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {showGiveUpConfirm ? (
+        <div className="solo-win-overlay" role="dialog" aria-modal="true" aria-labelledby="solo-give-up-title">
+          <div className="solo-win-modal">
+            <p className="solo-win-kicker">Give up</p>
+            <h2 id="solo-give-up-title">Reveal the word?</h2>
+            <p>This will end the current run and show the hidden word.</p>
+            <div className="inline">
+              <button type="button" className="button ghost" onClick={() => setShowGiveUpConfirm(false)}>
+                Cancel
+              </button>
+              <button type="button" className="button primary" onClick={confirmRevealWord}>
+                Reveal Word
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {revealedWord ? (
+        <div className="solo-win-overlay" role="dialog" aria-modal="true" aria-labelledby="solo-reveal-title">
+          <div className="solo-win-modal">
+            <p className="solo-win-kicker">Run ended</p>
+            <h2 id="solo-reveal-title">The word was {revealedWord}.</h2>
+            <button type="button" className="button primary" onClick={requestNewGame}>
+              Start New Game
+            </button>
+          </div>
+        </div>
       ) : null}
 
       <section className="solo-flow">
@@ -714,7 +664,7 @@ export function SoloClient() {
               onClick={requestHint}
               aria-label="Show a hint"
               title={
-                room?.hintsUsed && room.hintsUsed >= 3
+                effectiveHintsUsed >= 3
                   ? "All 3 hints used"
                   : canRequestHint
                     ? "Hint"
@@ -772,27 +722,7 @@ export function SoloClient() {
               <span className="solo-count-label">Guesses</span>
               <span className="solo-count-value">{guessCount}</span>
             </div>
-            <div className="solo-progress-item">
-              <span className="solo-count-label">Closest guess so far</span>
-              <span className="solo-progress-value">
-                {bestGuess ? `${bestGuess.word} (#${bestGuess.rank})` : "No signal yet"}
-              </span>
-            </div>
           </div>
-
-          {feedback ? (
-            <div className={`toast toast-${feedback.kind}`} role="status" aria-live="polite">
-              <strong>{feedback.title}</strong>
-              <span>{feedback.detail}</span>
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="toast toast-error" role="status" aria-live="polite">
-              <strong>Notice</strong>
-              <span>{error}</span>
-            </div>
-          ) : null}
         </section>
 
         <div className="solo-input-block">
@@ -825,15 +755,9 @@ export function SoloClient() {
               Enter
             </button>
           </form>
-          <div className="solo-validation-hints" aria-live="polite">
-            <p className="muted small-copy">Common English single words only. Use the base form when possible.</p>
-          </div>
         </div>
 
         <section className="solo-history">
-          <div className="solo-history-head">
-            <span className="solo-count-label">Guess history</span>
-          </div>
           <div className="history-list">
             {sortedGuesses.map((guess) => (
               <article
@@ -883,20 +807,6 @@ export function SoloClient() {
               You guessed <strong>{gameWon.winningWord}</strong> in{" "}
               <strong>{gameWon.turns}</strong> guesses.
             </p>
-            {canSaveLeaderboard && !guest && !leaderboardSaved ? (
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => setSavePromptOpen(true)}
-                disabled={isSavingLeaderboard}
-              >
-                Save to leaderboard
-              </button>
-            ) : null}
-            {leaderboardSaved ? (
-              <p className="success-copy">Saved to the daily leaderboard as {guest?.displayName}.</p>
-            ) : null}
-            {leaderboardSaveError ? <p className="error">{leaderboardSaveError}</p> : null}
             <button type="button" className="button primary" onClick={requestNewGame}>
               Start New Game
             </button>

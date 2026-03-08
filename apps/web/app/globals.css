@@ -1028,13 +1028,13 @@ button:hover {
   white-space: nowrap;
 }
 
-.solo-validation-hints {
-  display: grid;
-  gap: 4px;
-}
-
-.solo-validation-hints p {
-  margin: 0;
+.solo-toast-banner {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  z-index: 50;
+  width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%);
 }
 
 .solo-signal {
@@ -1044,11 +1044,7 @@ button:hover {
 
 .solo-progress-grid {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  column-gap: 20px;
-  row-gap: 10px;
+  justify-content: center;
 }
 
 .solo-progress-item {
@@ -1056,19 +1052,6 @@ button:hover {
   align-items: baseline;
   gap: 10px;
   min-width: 0;
-}
-
-.solo-progress-item:last-child {
-  margin-left: auto;
-  text-align: right;
-}
-
-.solo-progress-value {
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  font-weight: 700;
-  overflow-wrap: anywhere;
 }
 
 .toast {
@@ -1165,13 +1148,6 @@ a:focus-visible {
     rgb(238 248 229 / 56%) 0%,
     rgb(152 239 99 / 52%) 100%
   );
-}
-
-.solo-history-head {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
 }
 
 .history-list {
@@ -1830,15 +1806,7 @@ input[type="checkbox"] {
   }
 
   .solo-progress-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-
-  .solo-progress-item,
-  .solo-progress-item:last-child {
-    margin-left: 0;
-    text-align: left;
+    justify-content: center;
   }
 
   .solo-input-form {

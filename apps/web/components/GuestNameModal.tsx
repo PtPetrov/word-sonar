@@ -16,7 +16,7 @@ type GuestNameModalProps = {
 export function GuestNameModal({
   initialName = "",
   title = "Choose guest name",
-  description = "This name is used for rooms and the daily solo leaderboard.",
+  description = "This name is used for rooms.",
   submitLabel = "Continue",
   cancelLabel = "Not now",
   autoFocus = true,

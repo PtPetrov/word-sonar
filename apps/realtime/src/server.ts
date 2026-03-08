@@ -87,6 +87,7 @@ const engine = new RankEngine({
 });
 
 const rooms = new Map<string, RoomState>();
+const dailySoloHintUsage = new Map<string, { date: string; count: number }>();
 const SOCKET_EVENT_ERROR = "error" as const;
 const OFFLINE_MATCH_PREFIX = "offline-";
 let dbUnavailable = false;
@@ -321,6 +322,31 @@ function makeRoomCode(): string {
       return code;
     }
   }
+}
+
+function getDailySoloHintUsage(userId: string): number {
+  const today = nowDateInTimezone(serverConfig.dailyTimezone);
+  const existing = dailySoloHintUsage.get(userId);
+
+  if (!existing || existing.date !== today) {
+    dailySoloHintUsage.set(userId, { date: today, count: 0 });
+    return 0;
+  }
+
+  return existing.count;
+}
+
+function incrementDailySoloHintUsage(userId: string): number {
+  const today = nowDateInTimezone(serverConfig.dailyTimezone);
+  const existing = dailySoloHintUsage.get(userId);
+
+  if (!existing || existing.date !== today) {
+    dailySoloHintUsage.set(userId, { date: today, count: 1 });
+    return 1;
+  }
+
+  existing.count += 1;
+  return existing.count;
 }
 
 function buildSoloHint(room: RoomState): { word: string; rank: number } | null {
@@ -619,7 +645,8 @@ async function startMatch(room: RoomState, options?: { dailyDate?: string; targe
   room.rankByIndex = rankMap.rankByIndex;
   room.guessedSet.clear();
   room.guessHistory = [];
-  room.hintsUsed = 0;
+  const soloPlayerId = room.mode === "solo" ? room.players.values().next().value?.id ?? null : null;
+  room.hintsUsed = soloPlayerId ? getDailySoloHintUsage(soloPlayerId) : 0;
   room.contextWords = room.mode === "solo" ? engine.pickContextWords(room.rankByIndex, 3) : [];
   room.turnNumber = 1;
   room.startTime = Date.now();
@@ -1380,8 +1407,14 @@ io.on("connection", (socket) => {
       return;
     }
 
-    if (room.hintsUsed >= 3) {
-      emitError(socket.id, "INVALID_STATE", "You have already used all 3 hints.");
+    const userId = socket.data.userId;
+    if (!userId) {
+      emitError(socket.id, "ROOM_INVALID", "Solo player identity is missing");
+      return;
+    }
+
+    if (getDailySoloHintUsage(userId) >= 3) {
+      emitError(socket.id, "INVALID_STATE", "You have already used all 3 hints for today.");
       return;
     }
 
@@ -1391,7 +1424,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    room.hintsUsed += 1;
+    room.hintsUsed = incrementDailySoloHintUsage(userId);
     emitRoomState(room);
 
     await onGuess(socket.id, {

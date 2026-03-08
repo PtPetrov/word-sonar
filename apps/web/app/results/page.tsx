@@ -48,9 +48,6 @@ export default async function ResultsPage({ searchParams }: ResultsPageProps) {
           <Link className="button success" href="/solo">
             Play Again
           </Link>
-          <Link className="button secondary" href="/leaderboard">
-            Leaderboard
-          </Link>
         </div>
       </section>
     </PageShell>
