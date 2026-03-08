@@ -29,13 +29,9 @@ function scanDelayForPoint(top: number, left: number): string {
 
 export default function HomePage() {
   return (
-    <PageShell showHeader={false} className="home-page-shell">
+    <PageShell className="home-page-shell">
       <section className="home-minimal">
         <div className="home-copy">
-          <div className="home-mark" aria-label="Word Sonar">
-            <span className="logo-radar-dot" />
-            <span className="logo-text">WORD SONAR</span>
-          </div>
           <h1 className="display home-title">Find the hidden word with semantic radar.</h1>
           <p className="hero-body home-subtitle">
             Play solo or challenge a friend. Each guess shows whether you&apos;re
