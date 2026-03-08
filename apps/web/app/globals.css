@@ -266,6 +266,8 @@ button:hover {
   width: 100%;
   justify-content: center;
   text-align: center;
+  border: 0;
+  border-radius: 0;
 }
 
 .home-radar {
@@ -1779,18 +1781,24 @@ input[type="checkbox"] {
   }
 
   .home-minimal {
-    min-height: auto;
-    align-content: start;
-    gap: 18px;
-    padding: 18px 0 28px;
+    min-height: calc(100svh - 12px);
+    align-content: center;
+    gap: 12px;
+    padding: 8px 0;
+    overflow: clip;
   }
 
   .home-copy {
-    gap: 10px;
+    gap: 8px;
   }
 
   .home-actions {
     width: 100%;
+    gap: 8px;
+  }
+
+  .home-radar {
+    width: min(160px, 40vw);
   }
 
   .solo-flow {
