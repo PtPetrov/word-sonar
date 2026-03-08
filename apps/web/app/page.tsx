@@ -36,15 +36,12 @@ export default function HomePage() {
             <span className="logo-radar-dot" />
             <span className="logo-text">WORD SONAR</span>
           </div>
-          <h1 className="display home-title">
-            <span>Track the signal.</span>
-            <span>Hunt the word.</span>
-          </h1>
+          <h1 className="display home-title">Find the hidden word with semantic radar.</h1>
           <p className="hero-body home-subtitle">
-            Word Sonar is a semantic word guessing game with live radar feedback.
-            Play solo, challenge a friend head-to-head, and climb the
-            leaderboard with smarter guesses.
+            Play solo or challenge a friend. Each guess shows whether you&apos;re
+            getting semantically closer.
           </p>
+          <p className="home-rules-preview">Guess a word. Read the radar. Find the exact target.</p>
         </div>
 
         <div className="home-radar-wrap">

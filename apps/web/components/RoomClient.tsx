@@ -505,7 +505,7 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
             </div>
           ) : null}
 
-          <form onSubmit={submitGuess}>
+          <form onSubmit={submitGuess} className="guess-submit-form">
             <input
               ref={inputRef}
               value={guessWord}
@@ -521,6 +521,13 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
               className="solo-input"
               aria-label="Guess word"
             />
+            <button
+              type="submit"
+              className="button primary big guess-submit-button"
+              disabled={!guessWord.trim() || !myTurn || Boolean(gameWon) || room?.status !== "in_game"}
+            >
+              Enter
+            </button>
           </form>
         </div>
 

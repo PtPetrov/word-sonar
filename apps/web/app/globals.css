@@ -63,6 +63,10 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100%;
+  background-color: #0a0d0c;
+  background-image: var(--bg-app);
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
 body {
@@ -236,12 +240,14 @@ button:hover {
   margin: 0;
 }
 
-.home-title span {
-  display: block;
-}
-
 .home-subtitle {
   max-width: 50ch;
+}
+
+.home-rules-preview {
+  margin: 0;
+  color: rgb(226 255 207 / 88%);
+  font-size: 0.92rem;
 }
 
 .home-radar-wrap {
@@ -251,17 +257,15 @@ button:hover {
 }
 
 .home-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
   gap: 12px;
   width: min(420px, 82vw);
 }
 
 .home-primary-action {
   width: 100%;
-  border-color: transparent;
-  border-radius: 0;
+  justify-content: center;
+  text-align: center;
 }
 
 .home-radar {
@@ -470,9 +474,8 @@ button:hover {
   width: min(760px, 100%);
   margin: 0 auto;
   display: grid;
-  justify-items: center;
-  gap: 18px;
-  padding: 16px 0 48px;
+  gap: 16px;
+  padding: 10px 0 calc(96px + env(safe-area-inset-bottom));
 }
 
 .lobby-shell {
@@ -617,10 +620,10 @@ button:hover {
 .solo-topbar {
   width: 100%;
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
 }
 
 .solo-logo {
@@ -682,8 +685,19 @@ button:hover {
 
 .solo-radar-block,
 .solo-input-block,
-.solo-history {
+.solo-history,
+.solo-signal,
+.solo-intro {
   width: 100%;
+}
+
+.solo-radar-block {
+  display: grid;
+  justify-items: center;
+}
+
+.solo-radar-surface {
+  margin-inline: auto;
 }
 
 .solo-count {
@@ -703,6 +717,25 @@ button:hover {
   font-family: var(--font-mono);
   font-size: 1.5rem;
   font-weight: 700;
+}
+
+.solo-intro {
+  display: grid;
+  gap: 8px;
+}
+
+.solo-title,
+.solo-helper,
+.solo-secondary {
+  margin: 0;
+}
+
+.solo-helper {
+  max-width: 56ch;
+}
+
+.solo-secondary {
+  font-size: 0.95rem;
 }
 
 .radar-stage {
@@ -966,7 +999,74 @@ button:hover {
 
 .solo-input-block {
   display: grid;
+  gap: 12px;
+}
+
+.solo-input-form {
+  display: grid;
+  gap: 12px;
+}
+
+.solo-submit {
+  width: 100%;
+  justify-content: center;
+}
+
+.guess-submit-button {
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.solo-validation-hints {
+  display: grid;
+  gap: 4px;
+}
+
+.solo-validation-hints p {
+  margin: 0;
+}
+
+.solo-chip-row {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+.solo-chip-button {
+  border: 1px solid rgb(191 213 181 / 16%);
+  cursor: pointer;
+}
+
+.solo-chip-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.solo-signal {
+  display: grid;
+  gap: 12px;
+}
+
+.solo-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.solo-progress-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgb(191 213 181 / 16%);
+  background: rgb(20 25 21 / 0.42);
+}
+
+.solo-progress-value {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .toast {
@@ -1036,11 +1136,7 @@ a:focus-visible {
 .solo-history {
   display: grid;
   gap: 12px;
-  max-height: 708px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  min-height: 0;
-  padding-right: 4px;
+  overflow-x: clip;
   scrollbar-width: thin;
   scrollbar-color: rgb(152 239 99 / 38%) rgb(20 25 21 / 42%);
 }
@@ -1088,10 +1184,10 @@ a:focus-visible {
   isolation: isolate;
   overflow: hidden;
   padding: 12px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   border: 1px solid rgb(191 213 181 / 16%);
   border-radius: 0;
   background: rgb(20 25 21 / 0.52);
@@ -1118,10 +1214,13 @@ a:focus-visible {
   color: var(--text-secondary);
   font-size: 0.95rem;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .history-row strong {
   font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .solo-win-overlay {
@@ -1651,7 +1750,7 @@ input[type="checkbox"] {
 
 @media (max-width: 680px) {
   main.page {
-    width: calc(100% - 18px);
+    width: calc(100% - 40px);
     padding-top: 12px;
   }
 
@@ -1677,6 +1776,75 @@ input[type="checkbox"] {
   .panel,
   .card {
     padding: var(--space-2);
+  }
+
+  .home-minimal {
+    min-height: auto;
+    align-content: start;
+    gap: 18px;
+    padding: 18px 0 28px;
+  }
+
+  .home-copy {
+    gap: 10px;
+  }
+
+  .home-actions {
+    width: 100%;
+  }
+
+  .solo-flow {
+    gap: 14px;
+    padding-bottom: calc(120px + env(safe-area-inset-bottom));
+  }
+
+  .solo-topbar {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .solo-topbar-actions {
+    gap: 4px;
+  }
+
+  .solo-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .solo-progress-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .solo-input-form {
+    gap: 10px;
+  }
+
+  .guess-submit-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: end;
+  }
+
+  .guess-submit-form .solo-input {
+    min-width: 0;
+  }
+
+  .guess-submit-button {
+    width: auto;
+    min-width: 92px;
+    min-height: 48px;
+    padding-inline: 16px;
+  }
+
+  .solo-chip-row {
+    gap: 8px;
+  }
+
+  .solo-chip-button {
+    min-height: 40px;
+    padding: 8px 12px;
   }
 
   .radar-stage {

@@ -63,6 +63,7 @@ interface RoomState {
   turnEndsAt: number | null;
   disconnectTimers: Map<string, NodeJS.Timeout>;
   dailyDate: string | null;
+  soloLeaderboardEligible: boolean;
   hintsUsed: number;
   contextWords: string[];
 }
@@ -158,6 +159,7 @@ function createRoomState(input: {
     turnEndsAt: null,
     disconnectTimers: new Map(),
     dailyDate: null,
+    soloLeaderboardEligible: false,
     hintsUsed: 0,
     contextWords: []
   };
@@ -386,6 +388,13 @@ async function ensureUser(user: { id: string; displayName: string }): Promise<vo
       }),
     `ensureUser(${user.id})`
   );
+}
+
+function createAnonymousSoloUser() {
+  return {
+    id: randomUUID(),
+    displayName: "Guest"
+  };
 }
 
 function addPlayerToTeam(room: RoomState, player: PlayerState, teamId: TeamId, isCaptain: boolean): void {
@@ -706,6 +715,7 @@ async function finishMatch(room: RoomState, winnerTeamId: TeamId, winningWord: s
 
   if (
     room.mode === "solo" &&
+    room.soloLeaderboardEligible &&
     room.dailyDate &&
     room.matchId &&
     !isOfflineMatchId(room.matchId) &&
@@ -1309,19 +1319,22 @@ io.on("connection", (socket) => {
     }
 
     const { user, turnMs } = parsed.data;
-    await ensureUser(user);
+    const resolvedUser = user ?? createAnonymousSoloUser();
+    const isNamedGuest = Boolean(user);
+    await ensureUser(resolvedUser);
 
     const roomCode = makeRoomCode();
     const room = createRoomState({
       roomCode,
       mode: "solo",
-      hostId: user.id,
+      hostId: resolvedUser.id,
       turnMs: turnMs ?? serverConfig.turnMsDefault
     });
+    room.soloLeaderboardEligible = isNamedGuest;
 
     const player: PlayerState = {
-      id: user.id,
-      displayName: user.displayName,
+      id: resolvedUser.id,
+      displayName: resolvedUser.displayName,
       teamId: null,
       isCaptain: true,
       connected: true,
@@ -1331,16 +1344,13 @@ io.on("connection", (socket) => {
     addPlayerToTeam(room, player, "SOLO", true);
     rooms.set(roomCode, room);
 
-    socket.data.userId = user.id;
+    socket.data.userId = resolvedUser.id;
     socket.data.roomCode = roomCode;
     socket.join(roomCode);
 
-    const dailyDate = nowDateInTimezone(serverConfig.dailyTimezone);
     await createRoomRecord(room);
 
-    await startMatch(room, {
-      dailyDate
-    });
+    await startMatch(room);
   });
 
   socket.on("solo:hint", async (payload) => {

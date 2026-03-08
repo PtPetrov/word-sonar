@@ -153,7 +153,7 @@ export const ClientToServerSchemas = {
     user: GuestUserSchema
   }),
   "solo:startDaily": z.object({
-    user: GuestUserSchema,
+    user: GuestUserSchema.optional(),
     turnMs: z.number().int().positive().optional()
   }),
   "solo:hint": z.object({

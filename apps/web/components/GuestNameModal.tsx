@@ -4,10 +4,25 @@ import { useState } from "react";
 
 type GuestNameModalProps = {
   initialName?: string;
+  title?: string;
+  description?: string;
+  submitLabel?: string;
+  cancelLabel?: string;
+  autoFocus?: boolean;
+  onCancel?: () => void;
   onSave: (displayName: string) => void;
 };
 
-export function GuestNameModal({ initialName = "", onSave }: GuestNameModalProps) {
+export function GuestNameModal({
+  initialName = "",
+  title = "Choose guest name",
+  description = "This name is used for rooms and the daily solo leaderboard.",
+  submitLabel = "Continue",
+  cancelLabel = "Not now",
+  autoFocus = true,
+  onCancel,
+  onSave
+}: GuestNameModalProps) {
   const [displayName, setDisplayName] = useState(initialName);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,8 +42,8 @@ export function GuestNameModal({ initialName = "", onSave }: GuestNameModalProps
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Guest name">
       <form className="modal stack" onSubmit={submit}>
-        <h2 className="big">Choose guest name</h2>
-        <p className="muted">This name is used for rooms and the daily solo leaderboard.</p>
+        <h2 className="big">{title}</h2>
+        <p className="muted">{description}</p>
         <div>
           <label htmlFor="guest-name-input">Display name</label>
           <input
@@ -36,12 +51,17 @@ export function GuestNameModal({ initialName = "", onSave }: GuestNameModalProps
             value={displayName}
             onChange={(event) => setDisplayName(event.target.value)}
             maxLength={20}
-            autoFocus
+            autoFocus={autoFocus}
           />
         </div>
         {error ? <p className="error">{error}</p> : null}
         <div className="inline">
-          <button type="submit">Continue</button>
+          {onCancel ? (
+            <button type="button" className="button ghost" onClick={onCancel}>
+              {cancelLabel}
+            </button>
+          ) : null}
+          <button type="submit">{submitLabel}</button>
         </div>
       </form>
     </div>
