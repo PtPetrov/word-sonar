@@ -668,6 +668,11 @@ button:hover {
   transform: translateY(-1px);
 }
 
+.solo-icon-button.is-active {
+  opacity: 1;
+  color: var(--color-green-300);
+}
+
 .solo-icon-button:disabled {
   opacity: 0.28;
   color: var(--text-secondary);
@@ -693,8 +698,7 @@ button:hover {
 .solo-radar-block,
 .solo-input-block,
 .solo-history,
-.solo-signal,
-.solo-intro {
+.solo-signal {
   width: 100%;
 }
 
@@ -726,23 +730,21 @@ button:hover {
   font-weight: 700;
 }
 
-.solo-intro {
+.solo-info-popover {
   display: grid;
-  gap: 8px;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgb(14 17 15 / 72%);
 }
 
-.solo-title,
-.solo-helper,
-.solo-secondary {
+.solo-info-popover p,
+.solo-info-title {
   margin: 0;
 }
 
-.solo-helper {
-  max-width: 56ch;
-}
-
-.solo-secondary {
-  font-size: 0.95rem;
+.solo-info-title {
+  font-size: 0.98rem;
+  font-weight: 700;
 }
 
 .radar-stage {
@@ -1017,6 +1019,8 @@ button:hover {
 .solo-submit {
   width: 100%;
   justify-content: center;
+  border: 0;
+  border-radius: 0;
 }
 
 .guess-submit-button {
@@ -1033,39 +1037,30 @@ button:hover {
   margin: 0;
 }
 
-.solo-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.solo-chip-button {
-  border: 1px solid rgb(191 213 181 / 16%);
-  cursor: pointer;
-}
-
-.solo-chip-button:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
 .solo-signal {
   display: grid;
   gap: 12px;
 }
 
 .solo-progress-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 20px;
+  row-gap: 10px;
 }
 
-.solo-progress-card {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid rgb(191 213 181 / 16%);
-  background: rgb(20 25 21 / 0.42);
+.solo-progress-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.solo-progress-item:last-child {
+  margin-left: auto;
+  text-align: right;
 }
 
 .solo-progress-value {
@@ -1821,7 +1816,7 @@ input[type="checkbox"] {
   }
 
   .solo-topbar {
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
   }
 
@@ -1835,7 +1830,15 @@ input[type="checkbox"] {
   }
 
   .solo-progress-grid {
+    display: grid;
     grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .solo-progress-item,
+  .solo-progress-item:last-child {
+    margin-left: 0;
+    text-align: left;
   }
 
   .solo-input-form {
@@ -1849,6 +1852,20 @@ input[type="checkbox"] {
     align-items: end;
   }
 
+  .solo-input-block {
+    position: sticky;
+    bottom: 0;
+    z-index: 12;
+    padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+    background:
+      linear-gradient(
+        180deg,
+        rgb(10 13 12 / 0%) 0%,
+        rgb(10 13 12 / 92%) 20%,
+        rgb(10 13 12 / 100%) 100%
+      );
+  }
+
   .guess-submit-form .solo-input {
     min-width: 0;
   }
@@ -1858,15 +1875,6 @@ input[type="checkbox"] {
     min-width: 92px;
     min-height: 48px;
     padding-inline: 16px;
-  }
-
-  .solo-chip-row {
-    gap: 8px;
-  }
-
-  .solo-chip-button {
-    min-height: 40px;
-    padding: 8px 12px;
   }
 
   .radar-stage {

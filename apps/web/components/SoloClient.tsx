@@ -25,7 +25,6 @@ type FeedbackToast = {
 
 const RADAR_MAX_RANK = 100_000;
 const CONFETTI_COUNT = 18;
-const STARTER_WORDS = ["ocean", "music", "city", "light", "dream"] as const;
 
 function isCompactViewport(): boolean {
   if (typeof window === "undefined") {
@@ -180,7 +179,7 @@ function historyFillColor(proximity: Proximity): string {
   if (proximity === "hot") {
     return "rgb(214 137 67 / 0.78)";
   }
-  return "rgb(226 71 144 / 0.8)";
+  return "rgb(196 51 51 / 0.8)";
 }
 
 function errorMessageForGuess(code: string, attemptedWord: string): string | null {
@@ -213,6 +212,7 @@ export function SoloClient() {
   const [leaderboardSaveError, setLeaderboardSaveError] = useState<string | null>(null);
   const [leaderboardSaved, setLeaderboardSaved] = useState(false);
   const [savePromptOpen, setSavePromptOpen] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
 
   const requestedStartRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -595,12 +595,6 @@ export function SoloClient() {
     setGuessWord("");
   };
 
-  const fillStarterWord = (word: string) => {
-    setGuessWord(word);
-    setError(null);
-    focusGuessInput({ force: !isCompactViewport(), scroll: true });
-  };
-
   const saveLeaderboardResult = async (displayName: string) => {
     if (!gameWon || !room?.dailyDate) {
       return;
@@ -678,6 +672,19 @@ export function SoloClient() {
           <div className="solo-topbar-actions">
             <button
               type="button"
+              className={`solo-icon-button ${showInfo ? "is-active" : ""}`}
+              onClick={() => setShowInfo((current) => !current)}
+              aria-label="Show instructions"
+              title="How to play"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 10v6" />
+                <path d="M12 7h.01" />
+              </svg>
+            </button>
+            <button
+              type="button"
               className="solo-icon-button"
               onClick={requestNewGame}
               aria-label="Start a new game"
@@ -724,88 +731,14 @@ export function SoloClient() {
           </div>
         </header>
 
-        <section className="solo-intro">
-          <h1 className="big solo-title">Find the hidden word</h1>
-          <p className="muted solo-helper">
-            Guess a common English word. The radar gets stronger when your guess is semantically closer.
-          </p>
-          <p className="muted solo-secondary">Your goal is to find the exact hidden word.</p>
-        </section>
-
-        <div className="solo-input-block">
-          <form onSubmit={submitGuess} className="solo-input-form guess-submit-form">
-            <input
-              ref={inputRef}
-              value={guessWord}
-              onChange={(event) => setGuessWord(event.target.value)}
-              onFocus={() => {
-                if (isCompactViewport()) {
-                  window.setTimeout(() => {
-                    inputRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-                  }, 120);
-                }
-              }}
-              placeholder="Enter a guess"
-              disabled={Boolean(gameWon) || room?.status !== "in_game"}
-              className="solo-input"
-              aria-label="Guess word"
-              autoCapitalize="none"
-              autoCorrect="off"
-              enterKeyHint="go"
-              spellCheck={false}
-            />
-            <button
-              type="submit"
-              className="button primary big solo-submit guess-submit-button"
-              disabled={!guessWord.trim() || Boolean(gameWon) || room?.status !== "in_game"}
-            >
-              Enter
-            </button>
-          </form>
-          <div className="solo-validation-hints" aria-live="polite">
-            <p className="muted small-copy">Common English single words only.</p>
-            <p className="muted small-copy">Use the base form when possible.</p>
-          </div>
-          <div className="solo-chip-row" aria-label="Starter word suggestions">
-            {STARTER_WORDS.map((word) => (
-              <button
-                key={word}
-                type="button"
-                className="chip solo-chip-button"
-                onClick={() => fillStarterWord(word)}
-                disabled={Boolean(gameWon) || room?.status !== "in_game"}
-              >
-                {word}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <section className="solo-signal">
-          <div className="solo-progress-grid">
-            <div className="solo-progress-card">
-              <span className="solo-count-label">Guesses</span>
-              <span className="solo-count-value">{guessCount}</span>
-            </div>
-            <div className="solo-progress-card">
-              <span className="solo-count-label">Closest guess so far</span>
-              <span className="solo-progress-value">
-                {bestGuess ? `${bestGuess.word} (#${bestGuess.rank})` : "No signal yet"}
-              </span>
-            </div>
-          </div>
-
-          {feedback ? (
-            <div className={`toast toast-${feedback.kind}`} role="status" aria-live="polite">
-              <strong>{feedback.title}</strong>
-              <span>{feedback.detail}</span>
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="toast toast-error" role="status" aria-live="polite">
-              <strong>Notice</strong>
-              <span>{error}</span>
+          {showInfo ? (
+            <div className="solo-info-popover" role="note">
+              <h2 className="solo-info-title">Find the hidden word</h2>
+              <p className="muted">
+                Guess a common English word. The radar gets stronger when your guess is semantically closer.
+              </p>
+              <p className="muted">Your goal is to find the exact hidden word.</p>
             </div>
           ) : null}
 
@@ -833,7 +766,69 @@ export function SoloClient() {
               <span className="radar-center-dot" />
             </div>
           </div>
+
+          <div className="solo-progress-grid">
+            <div className="solo-progress-item">
+              <span className="solo-count-label">Guesses</span>
+              <span className="solo-count-value">{guessCount}</span>
+            </div>
+            <div className="solo-progress-item">
+              <span className="solo-count-label">Closest guess so far</span>
+              <span className="solo-progress-value">
+                {bestGuess ? `${bestGuess.word} (#${bestGuess.rank})` : "No signal yet"}
+              </span>
+            </div>
+          </div>
+
+          {feedback ? (
+            <div className={`toast toast-${feedback.kind}`} role="status" aria-live="polite">
+              <strong>{feedback.title}</strong>
+              <span>{feedback.detail}</span>
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="toast toast-error" role="status" aria-live="polite">
+              <strong>Notice</strong>
+              <span>{error}</span>
+            </div>
+          ) : null}
         </section>
+
+        <div className="solo-input-block">
+          <form onSubmit={submitGuess} className="solo-input-form guess-submit-form">
+            <input
+              ref={inputRef}
+              value={guessWord}
+              onChange={(event) => setGuessWord(event.target.value)}
+              onFocus={() => {
+                if (isCompactViewport()) {
+                  window.setTimeout(() => {
+                    inputRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+                  }, 120);
+                }
+              }}
+              placeholder="Enter a guess"
+              disabled={Boolean(gameWon) || room?.status !== "in_game"}
+              className="solo-input"
+              aria-label="Guess word"
+              autoCapitalize="none"
+              autoCorrect="off"
+              enterKeyHint="go"
+              spellCheck={false}
+            />
+            <button
+              type="submit"
+              className="button primary big solo-submit guess-submit-button"
+              disabled={!guessWord.trim() || Boolean(gameWon) || room?.status !== "in_game"}
+            >
+              Enter
+            </button>
+          </form>
+          <div className="solo-validation-hints" aria-live="polite">
+            <p className="muted small-copy">Common English single words only. Use the base form when possible.</p>
+          </div>
+        </div>
 
         <section className="solo-history">
           <div className="solo-history-head">
