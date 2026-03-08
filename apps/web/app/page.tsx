@@ -29,7 +29,7 @@ function scanDelayForPoint(top: number, left: number): string {
 
 export default function HomePage() {
   return (
-    <PageShell showHeader={false}>
+    <PageShell showHeader={false} className="home-page-shell">
       <section className="home-minimal">
         <div className="home-copy">
           <div className="home-mark" aria-label="Word Sonar">

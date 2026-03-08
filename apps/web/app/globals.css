@@ -1756,6 +1756,13 @@ input[type="checkbox"] {
     padding-top: 12px;
   }
 
+  .home-page-shell {
+    width: 100%;
+    min-height: 100dvh;
+    padding: 0;
+    overflow: hidden;
+  }
+
   .topbar {
     position: static;
     grid-template-columns: 1fr;
@@ -1781,7 +1788,7 @@ input[type="checkbox"] {
   }
 
   .home-minimal {
-    min-height: calc(100svh - 12px);
+    min-height: 100dvh;
     align-content: center;
     gap: 12px;
     padding: 8px 0;
