@@ -183,13 +183,27 @@ function parseWordList(filePath: string): string[] {
     .filter(Boolean);
 }
 
+function isGitLfsPointerFile(filePath: string): boolean {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+
+  const stats = fs.statSync(filePath);
+  if (stats.size > 512) {
+    return false;
+  }
+
+  const contents = fs.readFileSync(filePath, "utf8");
+  return contents.startsWith("version https://git-lfs.github.com/spec/v1");
+}
+
 function maybeResolveVectorSource(
   dataPath: string,
   prefix = "",
   allowUnprefixedFallback = true
 ): ResolvedVectorSource | null {
   const preferred = path.join(dataPath, `${prefix}vectors.f32`);
-  if (fs.existsSync(preferred)) {
+  if (fs.existsSync(preferred) && !isGitLfsPointerFile(preferred)) {
     return { filePath: preferred, resolvedPath: preferred };
   }
 
@@ -211,7 +225,7 @@ function maybeResolveVectorSource(
   }
 
   const fallback = path.join(dataPath, "vectors.f32");
-  if (fs.existsSync(fallback)) {
+  if (fs.existsSync(fallback) && !isGitLfsPointerFile(fallback)) {
     return { filePath: fallback, resolvedPath: fallback };
   }
 
