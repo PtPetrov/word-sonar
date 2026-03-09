@@ -129,6 +129,8 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
 
       if (parsed.data.code === "WORD_NOT_IN_DICTIONARY") {
         setError("I don't know this word.");
+      } else if (parsed.data.code === "PROFANITY_NOT_ALLOWED") {
+        setError("That word is blocked.");
       } else if (parsed.data.code === "INVALID_WORD_FORMAT") {
         setError("Use one English word.");
       } else if (parsed.data.code === "NOT_YOUR_TURN") {

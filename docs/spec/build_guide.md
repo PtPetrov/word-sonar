@@ -64,15 +64,15 @@ packages/
 shared/ # shared types, zod schemas, constants
 db/ # Prisma schema + client
 data/
-vocab_30k_words.txt
-targets_10k.txt # optional: curated target subset
+allowed_vocab.txt
+targets.txt # curated target subset
 vectors.f32 # binary float32 matrix (N x D), normalized
 word_index.json # word -> index map
 
 Notes:
 
 - The realtime server must be able to read the data files (bundle or download on build).
-- Keep a dictionary_version string (e.g., “v1_100k_words_2026_03”).
+- Keep a dictionary_version string (e.g., “v2_clean_lemmas_40k_2026_03”).
 
 ---
 
@@ -84,7 +84,7 @@ Allowed guess:
 
 - lowercase only
 - regex: ^[a-z]+$
-- present in vocab_30k_words
+- present in allowed_vocab.txt
 
 Reject if:
 
@@ -97,7 +97,7 @@ Reject if:
 
 Targets are chosen from a curated subset (recommended):
 
-- targets_10k.txt (clean, fun, no stopwords/profanity)
+- targets.txt (clean, fun, no stopwords/profanity)
 - This prevents terrible daily words.
 
 ### 3.3 Turn-based rules
@@ -241,7 +241,7 @@ Build pipeline output:
 python scripts/build_dictionary.py \
   --fasttext_vec /tmp/fasttext/wiki-news-300d-1M.vec \
   --out_dir data \
-  --vocab_size 100000 \
+  --allowed_size 40000 \
   --targets_size 10000 \
   --profanity_file scripts/profanity/en.txt \
   --timezone Europe/Sofia
@@ -250,13 +250,13 @@ python scripts/build_dictionary.py \
 Verify results:
 
 ```bash
-wc -l data/vocab_100k_words.txt data/targets_10k.txt
+wc -l data/allowed_vocab.txt data/targets.txt
 python - <<'PY'
 from pathlib import Path
 import json
 import numpy as np
-vocab = [line.strip() for line in Path("data/vocab_100k_words.txt").read_text().splitlines() if line.strip()]
-targets = [line.strip() for line in Path("data/targets_10k.txt").read_text().splitlines() if line.strip()]
+vocab = [line.strip() for line in Path("data/allowed_vocab.txt").read_text().splitlines() if line.strip()]
+targets = [line.strip() for line in Path("data/targets.txt").read_text().splitlines() if line.strip()]
 mapping = json.loads(Path("data/word_index.json").read_text())
 raw = np.fromfile("data/vectors.f32", dtype="<f4")
 print("vocab", len(vocab), "targets", len(targets), "mapping", len(mapping), "rows", raw.size // 300)

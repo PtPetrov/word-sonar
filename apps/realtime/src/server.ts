@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import {
   COUNTDOWN_SECONDS_DEFAULT,
+  type GameForfeit,
+  type GameWon,
   ROOM_CODE_LENGTH,
   TEAM_SIZE_BY_MODE,
   TURN_MS_DEFAULT,
@@ -39,6 +41,15 @@ interface TeamState {
   rotationCursor: number;
 }
 
+type TerminalReplayEvent =
+  | { event: "game:won"; payload: GameWon }
+  | { event: "game:forfeit"; payload: GameForfeit };
+
+// Memory model:
+// - permanent per-process: engine assets (vocab, index map, vectors, targets)
+// - per-room while active: players/teams state, recent guesses, guessed set, timers
+// - per-match while in_game: rankByIndex, target word, team best ranks
+// Cleanup helpers below release the heavy per-match state when a match ends or a room is destroyed.
 interface RoomState {
   roomCode: string;
   mode: Mode;
@@ -66,6 +77,7 @@ interface RoomState {
   soloLeaderboardEligible: boolean;
   hintsUsed: number;
   contextWords: string[];
+  terminalReplayEvent: TerminalReplayEvent | null;
 }
 
 const app = express();
@@ -82,6 +94,7 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEve
 
 const engine = new RankEngine({
   dataPath: serverConfig.dataPath,
+  dataPrefix: serverConfig.dataPrefix,
   dictionaryVersion: serverConfig.dictionaryVersion,
   expectedVectorDim: serverConfig.vectorDim
 });
@@ -90,7 +103,54 @@ const rooms = new Map<string, RoomState>();
 const dailySoloHintUsage = new Map<string, { date: string; count: number }>();
 const SOCKET_EVENT_ERROR = "error" as const;
 const OFFLINE_MATCH_PREFIX = "offline-";
+const MAX_RECENT_GUESSES = 25;
+const RECENT_GUESS_REPLAY_COUNT = 20;
+const DAILY_HINT_USAGE_RETENTION_DAYS = 2;
 let dbUnavailable = false;
+
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function currentMemorySnapshot() {
+  const usage = process.memoryUsage();
+  return {
+    rss: formatMegabytes(usage.rss),
+    heapUsed: formatMegabytes(usage.heapUsed),
+    heapTotal: formatMegabytes(usage.heapTotal),
+    external: formatMegabytes(usage.external)
+  };
+}
+
+function logMemory(label: string, extra?: Record<string, string | number>): void {
+  if (!serverConfig.logMemory) {
+    return;
+  }
+
+  const snapshot = currentMemorySnapshot();
+  // eslint-disable-next-line no-console
+  console.info(`[memory] ${label}`, {
+    ...snapshot,
+    ...(extra ?? {})
+  });
+}
+
+function shiftIsoDate(date: string, offsetDays: number): string {
+  const current = new Date(`${date}T00:00:00.000Z`);
+  current.setUTCDate(current.getUTCDate() + offsetDays);
+  return current.toISOString().slice(0, 10);
+}
+
+function pruneDailySoloHintUsage(): void {
+  const today = nowDateInTimezone(serverConfig.dailyTimezone);
+  const cutoff = shiftIsoDate(today, -DAILY_HINT_USAGE_RETENTION_DAYS);
+
+  for (const [userId, usage] of dailySoloHintUsage.entries()) {
+    if (usage.date < cutoff) {
+      dailySoloHintUsage.delete(userId);
+    }
+  }
+}
 
 function makeTeam(mode: Mode, teamId: TeamId): TeamState {
   if (mode === "solo" && teamId === "SOLO") {
@@ -162,7 +222,8 @@ function createRoomState(input: {
     dailyDate: null,
     soloLeaderboardEligible: false,
     hintsUsed: 0,
-    contextWords: []
+    contextWords: [],
+    terminalReplayEvent: null
   };
 }
 
@@ -325,6 +386,7 @@ function makeRoomCode(): string {
 }
 
 function getDailySoloHintUsage(userId: string): number {
+  pruneDailySoloHintUsage();
   const today = nowDateInTimezone(serverConfig.dailyTimezone);
   const existing = dailySoloHintUsage.get(userId);
 
@@ -337,6 +399,7 @@ function getDailySoloHintUsage(userId: string): number {
 }
 
 function incrementDailySoloHintUsage(userId: string): number {
+  pruneDailySoloHintUsage();
   const today = nowDateInTimezone(serverConfig.dailyTimezone);
   const existing = dailySoloHintUsage.get(userId);
 
@@ -350,11 +413,11 @@ function incrementDailySoloHintUsage(userId: string): number {
 }
 
 function buildSoloHint(room: RoomState): { word: string; rank: number } | null {
-  if (room.mode !== "solo" || !room.rankByIndex || room.guessHistory.length === 0) {
+  if (room.mode !== "solo" || !room.rankByIndex || room.guessedSet.size === 0) {
     return null;
   }
 
-  const bestRank = room.guessHistory.reduce((lowest, guess) => Math.min(lowest, guess.rank), Number.MAX_SAFE_INTEGER);
+  const bestRank = room.teamBestRank.get("SOLO") ?? Number.MAX_SAFE_INTEGER;
   if (!Number.isFinite(bestRank) || bestRank <= 2) {
     return null;
   }
@@ -496,6 +559,80 @@ function clearTurnTimer(room: RoomState): void {
   room.turnEndsAt = null;
 }
 
+function clearDisconnectTimers(room: RoomState): void {
+  for (const timer of room.disconnectTimers.values()) {
+    clearTimeout(timer);
+  }
+  room.disconnectTimers.clear();
+}
+
+function releaseActiveMatchResources(room: RoomState): void {
+  clearCountdown(room);
+  clearTurnTimer(room);
+  room.rankByIndex = null;
+  room.guessedSet.clear();
+  room.activeTeamId = null;
+  room.activePlayerId = null;
+  room.teamBestRank.clear();
+  room.startTime = null;
+  room.hintsUsed = 0;
+  room.contextWords = [];
+}
+
+function resetRoomForNextMatch(room: RoomState): void {
+  releaseActiveMatchResources(room);
+  room.matchId = null;
+  room.targetWord = null;
+  room.guessHistory = [];
+  room.dailyDate = null;
+  room.soloLeaderboardEligible = false;
+  room.terminalReplayEvent = null;
+}
+
+function cleanupRoom(room: RoomState, reason: string): void {
+  resetRoomForNextMatch(room);
+  clearDisconnectTimers(room);
+  room.players.clear();
+  room.teams.clear();
+  rooms.delete(room.roomCode);
+  logMemory("room_cleanup", {
+    roomCode: room.roomCode,
+    reason,
+    roomsRemaining: rooms.size
+  });
+}
+
+async function cleanupEmptyRoom(room: RoomState, reason: string): Promise<void> {
+  if (room.players.size !== 0) {
+    return;
+  }
+
+  if (room.status === "in_game" && room.matchId) {
+    room.status = "aborted";
+    if (!isOfflineMatchId(room.matchId)) {
+      await safeDb(
+        () =>
+          prisma.match.update({
+            where: { id: room.matchId ?? "" },
+            data: {
+              endedAt: new Date(),
+              status: "aborted"
+            }
+          }),
+        `abortMatchOnRoomCleanup(${room.matchId})`
+      );
+    }
+    await persistRoom(room);
+    logMemory("match_end", {
+      roomCode: room.roomCode,
+      outcome: "aborted_room_cleanup",
+      rooms: rooms.size
+    });
+  }
+
+  cleanupRoom(room, reason);
+}
+
 function isVersusFull(room: RoomState): boolean {
   if (room.mode !== "1v1" && room.mode !== "3v3") {
     return false;
@@ -623,10 +760,16 @@ async function startMatch(room: RoomState, options?: { dailyDate?: string; targe
   let targetWord: string;
   let rankMap: ReturnType<RankEngine["buildRankMap"]>;
   try {
-    targetWord =
-      options?.targetWord ??
-      (options?.dailyDate ? engine.pickDailyTarget(options.dailyDate) : engine.pickRandomTarget());
-    rankMap = engine.buildRankMap(targetWord);
+    if (options?.targetWord) {
+      targetWord = options.targetWord;
+      rankMap = engine.buildRankMap(targetWord);
+    } else if (options?.dailyDate) {
+      rankMap = engine.buildDailyRankMap(options.dailyDate);
+      targetWord = rankMap.targetWord;
+    } else {
+      targetWord = engine.pickRandomTarget();
+      rankMap = engine.buildRankMap(targetWord);
+    }
   } catch (error) {
     room.status = "aborted";
     const message =
@@ -637,6 +780,7 @@ async function startMatch(room: RoomState, options?: { dailyDate?: string; targe
     });
     emitRoomState(room);
     await persistRoom(room);
+    resetRoomForNextMatch(room);
     return;
   }
 
@@ -652,6 +796,7 @@ async function startMatch(room: RoomState, options?: { dailyDate?: string; targe
   room.startTime = Date.now();
   room.dailyDate = options?.dailyDate ?? null;
   room.teamBestRank.clear();
+  room.terminalReplayEvent = null;
 
   for (const teamId of teamIdsForMode(room.mode)) {
     room.teamBestRank.set(teamId, Number.POSITIVE_INFINITY);
@@ -702,6 +847,7 @@ async function startMatch(room: RoomState, options?: { dailyDate?: string; targe
     }
     emitRoomState(room);
     await persistRoom(room);
+    resetRoomForNextMatch(room);
     return;
   }
 
@@ -716,6 +862,12 @@ async function startMatch(room: RoomState, options?: { dailyDate?: string; targe
   emitRoomState(room);
   emitTurnState(room);
   await persistRoom(room);
+  logMemory("match_start", {
+    roomCode: room.roomCode,
+    mode: room.mode,
+    rooms: rooms.size,
+    dailyCache: engine.getDailyCacheSize()
+  });
 }
 
 async function finishMatch(room: RoomState, winnerTeamId: TeamId, winningWord: string): Promise<void> {
@@ -773,15 +925,27 @@ async function finishMatch(room: RoomState, winnerTeamId: TeamId, winningWord: s
     );
   }
 
-  io.to(room.roomCode).emit("game:won", {
+  const gameWonPayload: GameWon = {
     winnerTeamId,
     winningWord,
     turns: room.turnNumber,
     durationMs
-  });
+  };
+  room.terminalReplayEvent = {
+    event: "game:won",
+    payload: gameWonPayload
+  };
+
+  io.to(room.roomCode).emit("game:won", gameWonPayload);
 
   emitRoomState(room);
   await persistRoom(room);
+  releaseActiveMatchResources(room);
+  logMemory("match_end", {
+    roomCode: room.roomCode,
+    outcome: "won",
+    rooms: rooms.size
+  });
 }
 
 async function finishByForfeit(room: RoomState, loserUserId: string): Promise<void> {
@@ -816,15 +980,27 @@ async function finishByForfeit(room: RoomState, loserUserId: string): Promise<vo
   const winnerUserId =
     room.players.get(room.teams.get(winnerTeamId)?.playerIds[0] ?? "")?.id ?? null;
 
-  io.to(room.roomCode).emit("game:forfeit", {
+  const gameForfeitPayload: GameForfeit = {
     winnerTeamId,
     loserTeamId,
     winnerUserId,
     loserUserId
-  });
+  };
+  room.terminalReplayEvent = {
+    event: "game:forfeit",
+    payload: gameForfeitPayload
+  };
+
+  io.to(room.roomCode).emit("game:forfeit", gameForfeitPayload);
 
   emitRoomState(room);
   await persistRoom(room);
+  releaseActiveMatchResources(room);
+  logMemory("match_end", {
+    roomCode: room.roomCode,
+    outcome: "forfeit",
+    rooms: rooms.size
+  });
 }
 
 async function advanceTurn(room: RoomState): Promise<void> {
@@ -861,6 +1037,12 @@ async function advanceTurn(room: RoomState): Promise<void> {
     }
     emitRoomState(room);
     await persistRoom(room);
+    releaseActiveMatchResources(room);
+    logMemory("match_end", {
+      roomCode: room.roomCode,
+      outcome: "aborted_no_player",
+      rooms: rooms.size
+    });
     return;
   }
 
@@ -927,7 +1109,7 @@ async function onGuess(socketId: string, payload: { roomCode: string; word: stri
   };
 
   room.guessHistory.push(result);
-  if (room.guessHistory.length > 50) {
+  if (room.guessHistory.length > MAX_RECENT_GUESSES) {
     room.guessHistory.shift();
   }
 
@@ -1008,16 +1190,25 @@ function onReconnectSync(socketId: string, room: RoomState): void {
     });
   }
 
-  for (const guess of room.guessHistory.slice(-20)) {
+  if (room.terminalReplayEvent?.event === "game:won") {
+    io.to(socketId).emit("game:won", room.terminalReplayEvent.payload);
+  }
+
+  if (room.terminalReplayEvent?.event === "game:forfeit") {
+    io.to(socketId).emit("game:forfeit", room.terminalReplayEvent.payload);
+  }
+
+  for (const guess of room.guessHistory.slice(-RECENT_GUESS_REPLAY_COUNT)) {
     io.to(socketId).emit("guess:result", guess);
   }
 }
 
 function maybeDeleteRoom(room: RoomState): void {
   if (room.players.size === 0) {
-    clearCountdown(room);
-    clearTurnTimer(room);
-    rooms.delete(room.roomCode);
+    void cleanupEmptyRoom(room, "empty_room").catch((error) => {
+      // eslint-disable-next-line no-console
+      console.error("[room] cleanup failed", error);
+    });
   }
 }
 
@@ -1026,6 +1217,7 @@ function maybeStartCountdown(room: RoomState): void {
     return;
   }
 
+  clearCountdown(room);
   room.status = "countdown";
   room.countdownEndsAt = Date.now() + serverConfig.countdownSeconds * 1000;
 
@@ -1050,7 +1242,10 @@ app.get("/health", (_req, res) => {
     rooms: rooms.size,
     dictionaryVersion: engine.dictionaryVersion,
     vocabSize: engine.vocab.length,
-    targetSize: engine.targets.length
+    targetSize: engine.targets.length,
+    dictionaryMode: serverConfig.dictionaryMode,
+    dataPrefix: serverConfig.dataPrefix || null,
+    dailyCacheSize: engine.getDailyCacheSize()
   });
 });
 
@@ -1549,20 +1744,8 @@ io.on("connection", (socket) => {
     }
 
     room.status = "forming";
-    room.activePlayerId = null;
-    room.activeTeamId = null;
     room.turnNumber = 1;
-    room.matchId = null;
-    room.targetWord = null;
-    room.rankByIndex = null;
-    room.guessedSet.clear();
-    room.guessHistory = [];
-    room.teamBestRank.clear();
-    room.startTime = null;
-    room.countdownEndsAt = null;
-    room.turnEndsAt = null;
-    clearCountdown(room);
-    clearTurnTimer(room);
+    resetRoomForNextMatch(room);
 
     maybeStartCountdown(room);
     emitRoomState(room);
@@ -1601,7 +1784,7 @@ io.on("connection", (socket) => {
     onReconnectSync(socket.id, room);
   });
 
-  socket.on("room:leave", (payload) => {
+  socket.on("room:leave", async (payload) => {
     const parsed = validatePayloadOrEmit(socket.id, "room:leave", payload);
     if (!parsed?.success) {
       return;
@@ -1619,9 +1802,11 @@ io.on("connection", (socket) => {
     }
 
     removePlayerFromRoom(room, userId);
+    socket.leave(roomCode);
+    delete socket.data.roomCode;
     maybeCancelCountdown(room);
     emitRoomState(room);
-    maybeDeleteRoom(room);
+    await cleanupEmptyRoom(room, "room_leave");
   });
 
   socket.on("disconnect", () => {
@@ -1680,11 +1865,17 @@ io.on("connection", (socket) => {
           );
         }
         await persistRoom(latestRoom);
+        releaseActiveMatchResources(latestRoom);
+        logMemory("match_end", {
+          roomCode: latestRoom.roomCode,
+          outcome: "aborted_disconnect",
+          rooms: rooms.size
+        });
       }
 
       maybeCancelCountdown(latestRoom);
       emitRoomState(latestRoom);
-      maybeDeleteRoom(latestRoom);
+      await cleanupEmptyRoom(latestRoom, "disconnect_timeout");
     }, serverConfig.reconnectGraceMs);
 
     room.disconnectTimers.set(userId, timer);
@@ -1693,8 +1884,19 @@ io.on("connection", (socket) => {
 });
 
 server.listen(serverConfig.port, () => {
+  const diagnostics = engine.diagnostics;
   // eslint-disable-next-line no-console
   console.log(
-    `Realtime server on :${serverConfig.port} | dict=${engine.dictionaryVersion} | vocab=${engine.vocab.length}`
+    `Realtime server on :${serverConfig.port} | dict=${engine.dictionaryVersion} | mode=${serverConfig.dictionaryMode} | prefix=${serverConfig.dataPrefix || "default"} | vocab=${diagnostics.vocabCount} | targets=${diagnostics.targetCount} | dim=${diagnostics.vectorDim} | vectors=${formatMegabytes(diagnostics.vectorBytes)}`
   );
+  // eslint-disable-next-line no-console
+  console.log(
+    `[dictionary] vocab=${diagnostics.vocabPath} targets=${diagnostics.targetsPath} vectors=${diagnostics.vectorsPath}`
+  );
+  logMemory("startup", {
+    rooms: rooms.size,
+    dailyCache: engine.getDailyCacheSize(),
+    vectorBytes: diagnostics.vectorBytes,
+    targetOrderBytes: diagnostics.targetOrderBytes
+  });
 });

@@ -173,6 +173,10 @@ function errorMessageForGuess(code: string, attemptedWord: string): string | nul
       : "Not in dictionary";
   }
 
+  if (code === "PROFANITY_NOT_ALLOWED") {
+    return "That word is blocked";
+  }
+
   if (code === "INVALID_WORD_FORMAT") {
     return "Use a single common English word";
   }
@@ -374,7 +378,7 @@ export function SoloClient() {
         return;
       }
 
-      if (parsed.data.code === "WORD_NOT_IN_DICTIONARY") {
+      if (parsed.data.code === "WORD_NOT_IN_DICTIONARY" || parsed.data.code === "PROFANITY_NOT_ALLOWED") {
         showTransientError(errorMessageForGuess(parsed.data.code, lastSubmittedGuessRef.current) ?? parsed.data.message);
         return;
       }
@@ -622,19 +626,6 @@ export function SoloClient() {
           <div className="solo-topbar-actions">
             <button
               type="button"
-              className={`solo-icon-button ${showInfo ? "is-active" : ""}`}
-              onClick={() => setShowInfo((current) => !current)}
-              aria-label="Show instructions"
-              title="How to play"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 10v6" />
-                <path d="M12 7h.01" />
-              </svg>
-            </button>
-            <button
-              type="button"
               className="solo-icon-button"
               onClick={requestNewGame}
               aria-label="Start a new game"
@@ -644,19 +635,7 @@ export function SoloClient() {
                 <path d="M20 12a8 8 0 1 1-2.34-5.66" />
                 <path d="M20 4v6h-6" />
               </svg>
-            </button>
-            <button
-              type="button"
-              className="solo-icon-button"
-              onClick={requestRevealWord}
-              aria-label="Show the target word"
-              title="Show word"
-              disabled={!canRevealWord}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
+              <span className="solo-icon-label">New Game</span>
             </button>
             <button
               type="button"
@@ -677,21 +656,26 @@ export function SoloClient() {
                 <path d="M10 22h4" />
                 <path d="M8 14c-1.33-1-2-2.33-2-4a6 6 0 1 1 12 0c0 1.67-.67 3-2 4-.8.6-1.32 1.2-1.56 2H9.56C9.32 15.2 8.8 14.6 8 14Z" />
               </svg>
+              <span className="solo-icon-label">Hint</span>
+            </button>
+            <button
+              type="button"
+              className="solo-icon-button"
+              onClick={requestRevealWord}
+              aria-label="Show the target word"
+              title="Show word"
+              disabled={!canRevealWord}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <span className="solo-icon-label">Give Up</span>
             </button>
           </div>
         </header>
 
         <section className="solo-signal">
-          {showInfo ? (
-            <div className="solo-info-popover" role="note">
-              <h2 className="solo-info-title">Find the hidden word</h2>
-              <p className="muted">
-                Guess a common English word. The radar gets stronger when your guess is semantically closer.
-              </p>
-              <p className="muted">Your goal is to find the exact hidden word.</p>
-            </div>
-          ) : null}
-
           <div className="solo-radar-block">
             <div className="home-radar solo-radar-surface" role="img" aria-label="Radar showing semantic distance of guesses">
               <div className="home-radar-ring r1" />
@@ -716,13 +700,41 @@ export function SoloClient() {
               <span className="radar-center-dot" />
             </div>
           </div>
+        </section>
 
+        <section className="solo-status">
           <div className="solo-progress-grid">
             <div className="solo-progress-item">
-              <span className="solo-count-label">Guesses</span>
-              <span className="solo-count-value">{guessCount}</span>
+              <div className="solo-count-block">
+                <span className="solo-count-label">Guesses</span>
+                <span className="solo-count-value">{guessCount}</span>
+              </div>
+              <button
+                type="button"
+                className={`solo-icon-button solo-info-button ${showInfo ? "is-active" : ""}`}
+                onClick={() => setShowInfo((current) => !current)}
+                aria-label="Show instructions"
+                title="How to play"
+                aria-pressed={showInfo}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 10v6" />
+                  <path d="M12 7h.01" />
+                </svg>
+              </button>
             </div>
           </div>
+
+          {showInfo ? (
+            <div className="solo-info-popover" role="note">
+              <h2 className="solo-info-title">Find the hidden word</h2>
+              <p className="muted">
+                Guess a common English word. The radar gets stronger when your guess is semantically closer.
+              </p>
+              <p className="muted">Your goal is to find the exact hidden word.</p>
+            </div>
+          ) : null}
         </section>
 
         <div className="solo-input-block">

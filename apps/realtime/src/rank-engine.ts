@@ -8,21 +8,171 @@ type BuildRankMapResult = {
   rankByIndex: Int32Array;
 };
 
-const PREFERRED_TARGET_POOL_SIZE = 1500;
+type RankEngineAssets = {
+  vocab: string[];
+  targets: string[];
+  vectorDim: number;
+  resolvedDataPrefix: string;
+  indexByWord: Map<string, number>;
+  vectors: Float32Array;
+  profanity: Set<string>;
+  resolvedFiles: {
+    vocabPath: string;
+    targetsPath: string;
+    wordIndexPath: string;
+    vectorsPath: string;
+  };
+  approximateBytes: {
+    vectors: number;
+    targetOrder: number;
+  };
+};
+
+type RankEngineDiagnostics = {
+  vocabCount: number;
+  targetCount: number;
+  vectorDim: number;
+  vectorBytes: number;
+  targetOrderBytes: number;
+  dataPath: string;
+  dataPrefix: string;
+  vocabPath: string;
+  targetsPath: string;
+  vectorsPath: string;
+};
+
+type ResolvedVectorSource = {
+  resolvedPath: string;
+  partPaths?: string[];
+  filePath?: string;
+};
+
+type ResolvedAssetBundle = {
+  dataPrefix: string;
+  vocabPath: string;
+  targetsPath: string;
+  wordIndexPath: string;
+  profanityPath: string | null;
+  vectorSource: ResolvedVectorSource;
+};
 
 export type EvaluatedGuess =
   | { ok: false; code: GuessValidationErrorCode; message: string }
   | { ok: true; word: string; rank: number; isCorrect: boolean };
 
-function resolveDataFile(dataPath: string, candidates: string[]): string {
-  for (const candidate of candidates) {
+const GLOBAL_ASSET_CACHE_KEY = "__wordHuntRankEngineAssetCache__";
+const DAILY_RANK_CACHE_MAX_ENTRIES = 2;
+
+function getGlobalAssetCache(): Map<string, RankEngineAssets> {
+  const globalCache = globalThis as typeof globalThis & {
+    [GLOBAL_ASSET_CACHE_KEY]?: Map<string, RankEngineAssets>;
+  };
+
+  if (!globalCache[GLOBAL_ASSET_CACHE_KEY]) {
+    globalCache[GLOBAL_ASSET_CACHE_KEY] = new Map<string, RankEngineAssets>();
+  }
+
+  return globalCache[GLOBAL_ASSET_CACHE_KEY];
+}
+
+function prefixedCandidates(prefix: string, candidates: string[], allowUnprefixedFallback = true): string[] {
+  if (!prefix) {
+    return candidates;
+  }
+
+  if (!allowUnprefixedFallback) {
+    return candidates.map((candidate) => `${prefix}${candidate}`);
+  }
+
+  return [...candidates.map((candidate) => `${prefix}${candidate}`), ...candidates];
+}
+
+function resolveDataFile(dataPath: string, candidates: string[], prefix = "", allowUnprefixedFallback = true): string {
+  const resolved = maybeResolveDataFile(dataPath, candidates, prefix, allowUnprefixedFallback);
+  if (resolved) {
+    return resolved;
+  }
+
+  throw new Error(
+    `Missing required data file. Tried: ${prefixedCandidates(prefix, candidates, allowUnprefixedFallback).join(", ")}`
+  );
+}
+
+function maybeResolveDataFile(
+  dataPath: string,
+  candidates: string[],
+  prefix = "",
+  allowUnprefixedFallback = true
+): string | null {
+  for (const candidate of prefixedCandidates(prefix, candidates, allowUnprefixedFallback)) {
     const resolved = path.join(dataPath, candidate);
     if (fs.existsSync(resolved)) {
       return resolved;
     }
   }
 
-  throw new Error(`Missing required data file. Tried: ${candidates.join(", ")}`);
+  return null;
+}
+
+function maybeResolveAllowedVocabFile(dataPath: string, prefix = "", allowUnprefixedFallback = true): string | null {
+  const preferred = path.join(dataPath, `${prefix}allowed_vocab.txt`);
+  if (fs.existsSync(preferred)) {
+    return preferred;
+  }
+
+  if (prefix && allowUnprefixedFallback) {
+    const unprefixed = path.join(dataPath, "allowed_vocab.txt");
+    if (fs.existsSync(unprefixed)) {
+      return unprefixed;
+    }
+  }
+
+  const vocabFilePriority = (fileName: string): number => {
+    const match = /^vocab_(\d+)(k)?_(lemmas|words)\.txt$/u.exec(fileName);
+    if (!match) {
+      return 0;
+    }
+
+    const rawSize = Number.parseInt(match[1] ?? "0", 10);
+    const size = match[2] ? rawSize * 1_000 : rawSize;
+    const lemmaBonus = match[3] === "lemmas" ? 1 : 0;
+    return size * 10 + lemmaBonus;
+  };
+
+  const fallbackCandidates = fs
+    .readdirSync(dataPath)
+    .filter((fileName) => {
+      if (prefix && !allowUnprefixedFallback && !fileName.startsWith(prefix)) {
+        return false;
+      }
+      const normalized = prefix && fileName.startsWith(prefix) ? fileName.slice(prefix.length) : fileName;
+      return /^vocab_\d+[k\d]*_(lemmas|words)\.txt$/u.test(normalized);
+    })
+    .sort((left, right) => {
+      const normalizedLeft = prefix && left.startsWith(prefix) ? left.slice(prefix.length) : left;
+      const normalizedRight = prefix && right.startsWith(prefix) ? right.slice(prefix.length) : right;
+      const priorityDelta = vocabFilePriority(normalizedRight) - vocabFilePriority(normalizedLeft);
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+      return left.localeCompare(right, undefined, { numeric: true });
+    });
+
+  const chosen = fallbackCandidates[0];
+  if (!chosen) {
+    return null;
+  }
+
+  return path.join(dataPath, chosen);
+}
+
+function resolveAllowedVocabFile(dataPath: string, prefix = "", allowUnprefixedFallback = true): string {
+  const resolved = maybeResolveAllowedVocabFile(dataPath, prefix, allowUnprefixedFallback);
+  if (resolved) {
+    return resolved;
+  }
+
+  throw new Error("Missing required allowed vocab file.");
 }
 
 function parseWordList(filePath: string): string[] {
@@ -33,18 +183,103 @@ function parseWordList(filePath: string): string[] {
     .filter(Boolean);
 }
 
-function readVectorBuffer(dataPath: string): Buffer {
+function maybeResolveVectorSource(
+  dataPath: string,
+  prefix = "",
+  allowUnprefixedFallback = true
+): ResolvedVectorSource | null {
+  const splitPattern = prefix
+    ? new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}vectors\\.f32\\.part\\d+$`, "u")
+    : /^vectors\.f32\.part\d+$/u;
   const splitPartPaths = fs
     .readdirSync(dataPath)
-    .filter((fileName) => /^vectors\.f32\.part\d+$/u.test(fileName))
+    .filter((fileName) => splitPattern.test(fileName))
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
     .map((fileName) => path.join(dataPath, fileName));
 
   if (splitPartPaths.length > 0) {
-    return Buffer.concat(splitPartPaths.map((filePath) => fs.readFileSync(filePath)));
+    return { partPaths: splitPartPaths, resolvedPath: splitPartPaths.join(",") };
   }
 
-  return fs.readFileSync(path.join(dataPath, "vectors.f32"));
+  const preferred = path.join(dataPath, `${prefix}vectors.f32`);
+  if (fs.existsSync(preferred)) {
+    return { filePath: preferred, resolvedPath: preferred };
+  }
+
+  if (prefix && !allowUnprefixedFallback) {
+    return null;
+  }
+
+  const fallback = path.join(dataPath, "vectors.f32");
+  if (fs.existsSync(fallback)) {
+    return { filePath: fallback, resolvedPath: fallback };
+  }
+
+  return null;
+}
+
+function readVectorBuffer(
+  dataPath: string,
+  prefix = "",
+  allowUnprefixedFallback = true
+): { buffer: Buffer; resolvedPath: string } {
+  const source = maybeResolveVectorSource(dataPath, prefix, allowUnprefixedFallback);
+  if (!source) {
+    throw new Error(
+      `Missing required vector data. Tried: ${prefixedCandidates(prefix, ["vectors.f32", "vectors.f32.partN"], allowUnprefixedFallback).join(", ")}`
+    );
+  }
+
+  if (source.partPaths) {
+    return {
+      buffer: Buffer.concat(source.partPaths.map((filePath) => fs.readFileSync(filePath))),
+      resolvedPath: source.resolvedPath
+    };
+  }
+
+  return {
+    buffer: fs.readFileSync(source.filePath ?? ""),
+    resolvedPath: source.resolvedPath
+  };
+}
+
+function maybeResolveAssetBundle(dataPath: string, prefix = ""): ResolvedAssetBundle | null {
+  const vocabPath = maybeResolveAllowedVocabFile(dataPath, prefix, false);
+  const targetsPath = maybeResolveDataFile(dataPath, ["targets.txt", "targets_10k.txt"], prefix, false);
+  const wordIndexPath = maybeResolveDataFile(dataPath, ["word_index.json"], prefix, false);
+  const vectorSource = maybeResolveVectorSource(dataPath, prefix, false);
+
+  if (!vocabPath || !targetsPath || !wordIndexPath || !vectorSource) {
+    return null;
+  }
+
+  return {
+    dataPrefix: prefix,
+    vocabPath,
+    targetsPath,
+    wordIndexPath,
+    profanityPath: maybeResolveDataFile(dataPath, ["profanity.txt"], prefix, false),
+    vectorSource
+  };
+}
+
+function resolveAssetBundle(dataPath: string, prefix = ""): ResolvedAssetBundle {
+  const prefixedBundle = prefix ? maybeResolveAssetBundle(dataPath, prefix) : null;
+  if (prefixedBundle) {
+    return prefixedBundle;
+  }
+
+  const unprefixedBundle = maybeResolveAssetBundle(dataPath, "");
+  if (unprefixedBundle) {
+    return unprefixedBundle;
+  }
+
+  resolveAllowedVocabFile(dataPath, prefix);
+  resolveDataFile(dataPath, ["targets.txt", "targets_10k.txt"], prefix);
+  resolveDataFile(dataPath, ["word_index.json"], prefix);
+  readVectorBuffer(dataPath, prefix);
+
+  throw new Error("Could not resolve a dictionary asset bundle.");
 }
 
 function shuffleWords<T>(input: T[]): T[] {
@@ -57,6 +292,137 @@ function shuffleWords<T>(input: T[]): T[] {
   }
 
   return words;
+}
+
+function shuffleIndices(size: number): number[] {
+  return shuffleWords(Array.from({ length: size }, (_, index) => index));
+}
+
+function normalizeRows(vectors: Float32Array, vocabLength: number, vectorDim: number): void {
+  for (let row = 0; row < vocabLength; row += 1) {
+    const offset = row * vectorDim;
+    let norm = 0;
+    for (let dim = 0; dim < vectorDim; dim += 1) {
+      const value = vectors[offset + dim] ?? 0;
+      norm += value * value;
+    }
+
+    if (norm === 0) {
+      continue;
+    }
+
+    const scale = 1 / Math.sqrt(norm);
+    for (let dim = 0; dim < vectorDim; dim += 1) {
+      vectors[offset + dim] = (vectors[offset + dim] ?? 0) * scale;
+    }
+  }
+}
+
+function loadRankEngineAssets(input: {
+  dataPath: string;
+  dataPrefix?: string;
+  expectedVectorDim?: number;
+}): RankEngineAssets {
+  const dataPrefix = input.dataPrefix ?? "";
+  const cacheKey = `${input.dataPath}|${dataPrefix}|${input.expectedVectorDim ?? "auto"}`;
+  const assetCache = getGlobalAssetCache();
+  const cached = assetCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const bundle = resolveAssetBundle(input.dataPath, dataPrefix);
+  const {
+    vocabPath,
+    targetsPath,
+    wordIndexPath,
+    profanityPath,
+    vectorSource
+  } = bundle;
+
+  const vocab = parseWordList(vocabPath);
+  if (vocab.length === 0) {
+    throw new Error("Vocabulary is empty");
+  }
+
+  const targets = [...new Set(parseWordList(targetsPath))];
+  if (targets.length === 0) {
+    throw new Error("No targets found in targets file");
+  }
+
+  const profanity = profanityPath && fs.existsSync(profanityPath)
+    ? new Set(parseWordList(profanityPath))
+    : new Set<string>();
+
+  const wordIndexRaw = JSON.parse(fs.readFileSync(wordIndexPath, "utf8")) as Record<string, number>;
+  const indexByWord = new Map<string, number>();
+  for (const word of vocab) {
+    const index = wordIndexRaw[word];
+    if (index === undefined || index === null) {
+      throw new Error(`word_index.json is missing vocab entry: ${word}`);
+    }
+    indexByWord.set(word, index);
+  }
+
+  for (const word of targets) {
+    if (!indexByWord.has(word)) {
+      throw new Error(`Target word is not in allowed vocab: ${word}`);
+    }
+  }
+
+  const { buffer: vectorBuffer, resolvedPath: vectorsPath } = vectorSource.partPaths
+    ? {
+        buffer: Buffer.concat(vectorSource.partPaths.map((filePath) => fs.readFileSync(filePath))),
+        resolvedPath: vectorSource.resolvedPath
+      }
+    : {
+        buffer: fs.readFileSync(vectorSource.filePath ?? ""),
+        resolvedPath: vectorSource.resolvedPath
+      };
+  if (vectorBuffer.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
+    throw new Error("vectors.f32 byte length must be divisible by 4");
+  }
+
+  const vectors = new Float32Array(
+    vectorBuffer.buffer,
+    vectorBuffer.byteOffset,
+    vectorBuffer.byteLength / Float32Array.BYTES_PER_ELEMENT
+  );
+
+  const inferredDim = vectors.length / vocab.length;
+  if (!Number.isInteger(inferredDim)) {
+    throw new Error(`Vector size mismatch: vectorCount=${vectors.length} vocabSize=${vocab.length}`);
+  }
+
+  const vectorDim = input.expectedVectorDim ?? inferredDim;
+  if (vectorDim !== inferredDim) {
+    throw new Error(`Expected vector dim ${vectorDim}, found ${inferredDim}`);
+  }
+
+  normalizeRows(vectors, vocab.length, vectorDim);
+
+  const assets: RankEngineAssets = {
+    vocab,
+    targets,
+    vectorDim,
+    resolvedDataPrefix: bundle.dataPrefix,
+    indexByWord,
+    vectors,
+    profanity,
+    resolvedFiles: {
+      vocabPath,
+      targetsPath,
+      wordIndexPath,
+      vectorsPath
+    },
+    approximateBytes: {
+      vectors: vectorBuffer.byteLength,
+      targetOrder: targets.length * Uint32Array.BYTES_PER_ELEMENT
+    }
+  };
+
+  assetCache.set(cacheKey, assets);
+  return assets;
 }
 
 function hashSeed(seed: string): number {
@@ -79,20 +445,6 @@ function isLikelyPluralWord(word: string): boolean {
     return true;
   }
   return word.endsWith("s");
-}
-
-function hasVowelSoundHint(word: string): boolean {
-  return /[aeiouy]/u.test(word);
-}
-
-function isSoftRejectedTargetWord(word: string): boolean {
-  if (word.length < 4 || word.length > 10) {
-    return true;
-  }
-  if (word.length <= 5 && !hasVowelSoundHint(word)) {
-    return true;
-  }
-  return isLikelyPluralWord(word);
 }
 
 function normalizeContextWord(word: string): string {
@@ -119,7 +471,8 @@ function isTooSimilarContextWord(word: string, selected: string[]): boolean {
 
 export type GuessValidationErrorCode =
   | "INVALID_WORD_FORMAT"
-  | "WORD_NOT_IN_DICTIONARY";
+  | "WORD_NOT_IN_DICTIONARY"
+  | "PROFANITY_NOT_ALLOWED";
 
 export class RankEngine {
   public readonly dictionaryVersion: string;
@@ -130,119 +483,55 @@ export class RankEngine {
 
   public readonly vectorDim: number;
 
+  public readonly diagnostics: RankEngineDiagnostics;
+
   private readonly indexByWord: Map<string, number>;
 
   private readonly vectors: Float32Array;
 
   private readonly profanity: Set<string>;
 
-  private readonly targetBlocklist: Set<string>;
+  private readonly targetOrder: number[];
 
-  private readonly targetPool: string[];
-
-  private readonly rankMapCache: Map<string, BuildRankMapResult>;
+  private readonly dailyRankMapCache: Map<string, BuildRankMapResult>;
 
   private targetPoolCursor: number;
 
   constructor(input: {
     dataPath: string;
+    dataPrefix?: string;
     dictionaryVersion: string;
     expectedVectorDim?: number;
   }) {
     this.dictionaryVersion = input.dictionaryVersion;
 
-    const vocabPath = resolveDataFile(input.dataPath, [
-      "vocab_100k_words.txt",
-      "vocab_30k_words.txt",
-      "vocab_100k_lemmas.txt",
-      "vocab_30k_lemmas.txt"
-    ]);
-    const targetsPath = path.join(input.dataPath, "targets_10k.txt");
-    const wordIndexPath = path.join(input.dataPath, "word_index.json");
-    const profanityPath = path.join(input.dataPath, "profanity.txt");
-    const targetBlocklistPath = path.join(input.dataPath, "target_blocklist.txt");
-
-    const requiredPaths = [vocabPath, targetsPath, wordIndexPath];
-    for (const requiredPath of requiredPaths) {
-      if (!fs.existsSync(requiredPath)) {
-        throw new Error(`Missing required data file: ${requiredPath}`);
-      }
-    }
-
-    this.vocab = parseWordList(vocabPath);
-    if (this.vocab.length === 0) {
-      throw new Error("Vocabulary is empty");
-    }
-
-    this.profanity = fs.existsSync(profanityPath)
-      ? new Set(parseWordList(profanityPath))
-      : new Set();
-    this.targetBlocklist = fs.existsSync(targetBlocklistPath)
-      ? new Set(parseWordList(targetBlocklistPath))
-      : new Set();
-
-    const wordIndexRaw = JSON.parse(fs.readFileSync(wordIndexPath, "utf8")) as Record<
-      string,
-      number
-    >;
-
-    this.indexByWord = new Map<string, number>();
-    for (const word of this.vocab) {
-      const index = wordIndexRaw[word];
-      if (index === undefined || index === null) {
-        throw new Error(`word_index.json is missing vocab entry: ${word}`);
-      }
-
-      this.indexByWord.set(word, index);
-    }
-
-    // Runtime contract for vectors.f32:
-    // - little-endian float32 values
-    // - row-major layout
-    // - no header, shape [vocab_size, vector_dim]
-    const vectorBuffer = readVectorBuffer(input.dataPath);
-    if (vectorBuffer.byteLength % 4 !== 0) {
-      throw new Error("vectors.f32 byte length must be divisible by 4");
-    }
-
-    this.vectors = new Float32Array(
-      vectorBuffer.buffer,
-      vectorBuffer.byteOffset,
-      vectorBuffer.byteLength / Float32Array.BYTES_PER_ELEMENT
-    );
-
-    const inferredDim = this.vectors.length / this.vocab.length;
-    if (!Number.isInteger(inferredDim)) {
-      throw new Error(
-        `Vector size mismatch: vectorCount=${this.vectors.length} vocabSize=${this.vocab.length}`
-      );
-    }
-
-    this.vectorDim = input.expectedVectorDim ?? inferredDim;
-    if (this.vectorDim !== inferredDim) {
-      throw new Error(`Expected vector dim ${this.vectorDim}, found ${inferredDim}`);
-    }
-
-    this.normalizeRows();
-
-    const candidateTargets = [...new Set(parseWordList(targetsPath))].filter((word) => {
-      return (
-        this.indexByWord.has(word) &&
-        !this.profanity.has(word) &&
-        !this.targetBlocklist.has(word) &&
-        !isSoftRejectedTargetWord(word)
-      );
+    const assets = loadRankEngineAssets({
+      dataPath: input.dataPath,
+      dataPrefix: input.dataPrefix,
+      expectedVectorDim: input.expectedVectorDim
     });
 
-    if (candidateTargets.length === 0) {
-      throw new Error("No valid targets found after profanity/dictionary filtering");
-    }
-
-    const curatedTargets = candidateTargets.slice(0, Math.min(candidateTargets.length, PREFERRED_TARGET_POOL_SIZE));
-    this.targets = curatedTargets;
-    this.targetPool = shuffleWords(curatedTargets);
-    this.rankMapCache = new Map();
+    this.vocab = assets.vocab;
+    this.targets = assets.targets;
+    this.vectorDim = assets.vectorDim;
+    this.indexByWord = assets.indexByWord;
+    this.vectors = assets.vectors;
+    this.profanity = assets.profanity;
+    this.targetOrder = shuffleIndices(this.targets.length);
+    this.dailyRankMapCache = new Map<string, BuildRankMapResult>();
     this.targetPoolCursor = 0;
+    this.diagnostics = {
+      vocabCount: this.vocab.length,
+      targetCount: this.targets.length,
+      vectorDim: this.vectorDim,
+      vectorBytes: assets.approximateBytes.vectors,
+      targetOrderBytes: assets.approximateBytes.targetOrder,
+      dataPath: input.dataPath,
+      dataPrefix: assets.resolvedDataPrefix,
+      vocabPath: assets.resolvedFiles.vocabPath,
+      targetsPath: assets.resolvedFiles.targetsPath,
+      vectorsPath: assets.resolvedFiles.vectorsPath
+    };
   }
 
   validateGuess(word: string): { ok: true } | { ok: false; code: GuessValidationErrorCode; message: string } {
@@ -250,7 +539,7 @@ export class RankEngine {
       return {
         ok: false,
         code: "INVALID_WORD_FORMAT",
-        message: "Only one English word"
+        message: "Use a single common English word"
       };
     }
 
@@ -258,7 +547,15 @@ export class RankEngine {
       return {
         ok: false,
         code: "WORD_NOT_IN_DICTIONARY",
-        message: "I don't know this word."
+        message: "Not in dictionary"
+      };
+    }
+
+    if (this.profanity.has(word)) {
+      return {
+        ok: false,
+        code: "PROFANITY_NOT_ALLOWED",
+        message: "That word is blocked"
       };
     }
 
@@ -266,54 +563,71 @@ export class RankEngine {
   }
 
   buildRankMap(targetWord: string): BuildRankMapResult {
-    const cached = this.rankMapCache.get(targetWord);
-    if (cached) {
-      return cached;
-    }
-
     const targetIndex = this.indexByWord.get(targetWord);
     if (targetIndex === undefined) {
       throw new Error(`Target word is not in vocabulary: ${targetWord}`);
     }
 
+    const vocabLength = this.vocab.length;
     const targetOffset = targetIndex * this.vectorDim;
-    const scoreEntries = new Array<{ index: number; score: number }>(this.vocab.length);
+    const scores = new Float32Array(vocabLength);
+    const sortedIndices = new Uint32Array(vocabLength);
 
-    for (let row = 0; row < this.vocab.length; row += 1) {
+    for (let row = 0; row < vocabLength; row += 1) {
       const base = row * this.vectorDim;
       let dot = 0;
       for (let dim = 0; dim < this.vectorDim; dim += 1) {
         dot += (this.vectors[targetOffset + dim] ?? 0) * (this.vectors[base + dim] ?? 0);
       }
-      scoreEntries[row] = { index: row, score: dot };
+      scores[row] = dot;
+      sortedIndices[row] = row;
     }
 
-    scoreEntries.sort((a, b) => {
-      const scoreDelta = b.score - a.score;
+    sortedIndices.sort((left, right) => {
+      const scoreDelta = (scores[right] ?? 0) - (scores[left] ?? 0);
       if (scoreDelta !== 0) {
         return scoreDelta;
       }
-      return a.index - b.index;
+      return left - right;
     });
-    const rankByIndex = new Int32Array(this.vocab.length);
+    const rankByIndex = new Int32Array(vocabLength);
 
-    for (let i = 0; i < scoreEntries.length; i += 1) {
-      const entry = scoreEntries[i];
-      if (!entry) {
-        continue;
-      }
-      rankByIndex[entry.index] = i + 1;
+    for (let i = 0; i < sortedIndices.length; i += 1) {
+      rankByIndex[sortedIndices[i] ?? 0] = i + 1;
     }
 
-    const result = { targetWord, targetIndex, rankByIndex };
-    this.rankMapCache.set(targetWord, result);
+    return { targetWord, targetIndex, rankByIndex };
+  }
+
+  buildDailyRankMap(seedDate: string): BuildRankMapResult {
+    const cached = this.dailyRankMapCache.get(seedDate);
+    if (cached) {
+      return cached;
+    }
+
+    const result = this.buildRankMap(this.pickDailyTarget(seedDate));
+    this.dailyRankMapCache.set(seedDate, result);
+
+    while (this.dailyRankMapCache.size > DAILY_RANK_CACHE_MAX_ENTRIES) {
+      const oldestKey = this.dailyRankMapCache.keys().next().value;
+      if (oldestKey === undefined) {
+        break;
+      }
+      this.dailyRankMapCache.delete(oldestKey);
+    }
+
     return result;
   }
 
   pickRandomTarget(): string {
-    const nextTarget = this.targetPool[this.targetPoolCursor];
-    if (!nextTarget) {
+    const nextIndex = this.targetOrder[this.targetPoolCursor];
+    if (nextIndex === undefined) {
       throw new Error("No unused targets left. Rebuild targets or restart server.");
+    }
+
+    const nextTarget = this.targets[nextIndex];
+    if (!nextTarget) {
+      throw new Error(`Missing target for shuffled index ${nextIndex}`);
     }
 
     this.targetPoolCursor += 1;
@@ -332,6 +646,10 @@ export class RankEngine {
     }
 
     return target;
+  }
+
+  getDailyCacheSize(): number {
+    return this.dailyRankMapCache.size;
   }
 
   getRank(word: string, rankByIndex: Int32Array): number {
@@ -421,25 +739,5 @@ export class RankEngine {
     }
 
     return selected.slice(0, limit);
-  }
-
-  private normalizeRows(): void {
-    for (let row = 0; row < this.vocab.length; row += 1) {
-      const offset = row * this.vectorDim;
-      let norm = 0;
-      for (let dim = 0; dim < this.vectorDim; dim += 1) {
-        const value = this.vectors[offset + dim] ?? 0;
-        norm += value * value;
-      }
-
-      if (norm === 0) {
-        continue;
-      }
-
-      const scale = 1 / Math.sqrt(norm);
-      for (let dim = 0; dim < this.vectorDim; dim += 1) {
-        this.vectors[offset + dim] = (this.vectors[offset + dim] ?? 0) * scale;
-      }
-    }
   }
 }

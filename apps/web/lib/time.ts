@@ -1,8 +1,0 @@
-export function getSofiaDateString(date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Sofia",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(date);
-}

@@ -1,20 +1,53 @@
-# Minimal starter list for local pipeline runs.
-# Replace/extend with a proper profanity dataset before production builds.
+# Profanity blocklist for runtime and dictionary builds.
 # Keep one lowercase token per line.
 
+arse
+arsehole
+ass
 asshole
 bastard
+biatch
 bitch
+bollocks
+boner
+boob
+boobs
+bugger
 bullshit
+choad
+cock
+cocksucker
+coon
 crap
 cunt
 damn
 dick
+dildo
+douche
+douchebag
+fag
+faggot
 fuck
+fucking
+goddamn
+jackass
+jerkoff
 motherfucker
+motherfucking
 nigga
 nigger
+nutsack
+penis
 piss
+pissed
+prick
+pussy
+scrotum
 shit
+shithead
+shitty
+skank
 slut
+twat
+wanker
 whore
