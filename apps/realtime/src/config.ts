@@ -27,10 +27,24 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
+function parseDataPrefix(value: string | undefined, fallback: string): string {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed === "''" || trimmed === "\"\"") {
+    return "";
+  }
+
+  return trimmed;
+}
+
 const dictionaryMode = process.env.DICTIONARY_MODE ?? (process.env.NODE_ENV === "development" ? "dev" : "prod");
-const dataPrefix =
-  process.env.DATA_PREFIX ??
-  (dictionaryMode === "dev" ? "dev_" : "");
+const dataPrefix = parseDataPrefix(
+  process.env.DATA_PREFIX,
+  dictionaryMode === "dev" ? "dev_" : "",
+);
 
 export const serverConfig = {
   port: parseIntWithDefault(process.env.PORT, 4001),

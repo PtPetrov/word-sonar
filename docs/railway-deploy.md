@@ -27,11 +27,14 @@ Required variables:
 ```env
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 CORS_ORIGIN=https://<your-web-domain>
-DICTIONARY_VERSION=v1_100k_words_2026_03
+DICTIONARY_VERSION=v2_clean_lemmas_40k_2026_03
 TURN_MS_DEFAULT=15000
 COUNTDOWN_SECONDS=5
+DICTIONARY_MODE=prod
+DATA_PREFIX=""
 VECTOR_DIM=300
 RECONNECT_GRACE_MS=30000
+LOG_MEMORY=false
 ```
 
 Notes:
@@ -52,7 +55,7 @@ Required variables:
 ```env
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 NEXT_PUBLIC_REALTIME_URL=https://<your-realtime-domain>
-NEXT_PUBLIC_DICTIONARY_VERSION=v1_100k_words_2026_03
+NEXT_PUBLIC_DICTIONARY_VERSION=v2_clean_lemmas_40k_2026_03
 ```
 
 ## 4. Run Prisma migrations

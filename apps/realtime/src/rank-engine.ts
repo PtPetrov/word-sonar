@@ -188,6 +188,11 @@ function maybeResolveVectorSource(
   prefix = "",
   allowUnprefixedFallback = true
 ): ResolvedVectorSource | null {
+  const preferred = path.join(dataPath, `${prefix}vectors.f32`);
+  if (fs.existsSync(preferred)) {
+    return { filePath: preferred, resolvedPath: preferred };
+  }
+
   const splitPattern = prefix
     ? new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}vectors\\.f32\\.part\\d+$`, "u")
     : /^vectors\.f32\.part\d+$/u;
@@ -199,11 +204,6 @@ function maybeResolveVectorSource(
 
   if (splitPartPaths.length > 0) {
     return { partPaths: splitPartPaths, resolvedPath: splitPartPaths.join(",") };
-  }
-
-  const preferred = path.join(dataPath, `${prefix}vectors.f32`);
-  if (fs.existsSync(preferred)) {
-    return { filePath: preferred, resolvedPath: preferred };
   }
 
   if (prefix && !allowUnprefixedFallback) {

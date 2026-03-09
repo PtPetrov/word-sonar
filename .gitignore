@@ -11,6 +11,7 @@ out/
 __pycache__/
 *.py[cod]
 .python-version
+data/debug/
 
 .env
 .env.*
