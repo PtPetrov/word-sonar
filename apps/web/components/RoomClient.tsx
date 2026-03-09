@@ -11,6 +11,7 @@ import {
   type TurnState
 } from "@word-hunt/shared";
 import { GuestNameModal } from "@/components/GuestNameModal";
+import { captureAnalyticsEvent, identifyAnalyticsUser } from "@/lib/analytics";
 import { createGuestIdentity, readGuestIdentity, saveGuestIdentity, type GuestIdentity } from "@/lib/guest";
 import { getSocket } from "@/lib/socket";
 
@@ -104,6 +105,15 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const inputRef = useRef<HTMLInputElement | null>(null);
   const errorTimeoutRef = useRef<number | null>(null);
+  const joinedRoomRef = useRef<string | null>(null);
+  const activeMatchRef = useRef<string | null>(null);
+  const trackedGuessKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (guest) {
+      identifyAnalyticsUser(guest, { surface: "arena" });
+    }
+  }, [guest]);
 
   useEffect(() => {
     if (!guest || !/^\d{4}$/u.test(roomCode)) {
@@ -154,6 +164,25 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
         return;
       }
 
+      if (joinedRoomRef.current !== parsed.data.roomCode) {
+        joinedRoomRef.current = parsed.data.roomCode;
+        captureAnalyticsEvent("arena_joined", {
+          room_code: parsed.data.roomCode,
+          mode: parsed.data.mode,
+          preferred_team: preferredTeam ?? "none"
+        });
+      }
+
+      if (parsed.data.matchId && activeMatchRef.current !== parsed.data.matchId) {
+        activeMatchRef.current = parsed.data.matchId;
+        trackedGuessKeysRef.current.clear();
+        captureAnalyticsEvent("arena_game_started", {
+          room_code: parsed.data.roomCode,
+          match_id: parsed.data.matchId,
+          mode: parsed.data.mode
+        });
+      }
+
       setRoom(parsed.data);
       if (parsed.data.status !== "finished") {
         setGameWon(null);
@@ -182,6 +211,18 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
         return;
       }
 
+      const guessKey = `${parsed.data.byUserId}:${parsed.data.word}:${parsed.data.createdAt}`;
+      if (parsed.data.byUserId === guest.id && !trackedGuessKeysRef.current.has(guessKey)) {
+        trackedGuessKeysRef.current.add(guessKey);
+        captureAnalyticsEvent("arena_guess_result", {
+          room_code: roomCode,
+          rank: parsed.data.rank,
+          is_duplicate: parsed.data.isDuplicate,
+          is_new_team_best: parsed.data.isNewTeamBest,
+          turn_number: parsed.data.turnNumber
+        });
+      }
+
       setGuesses((previous) => {
         const exists = previous.some((entry) => {
           return (
@@ -204,6 +245,12 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
         return;
       }
 
+      captureAnalyticsEvent("arena_game_won", {
+        room_code: roomCode,
+        winner_team: parsed.data.winnerTeamId,
+        turns: parsed.data.turns,
+        duration_ms: parsed.data.durationMs
+      });
       setGameForfeit(null);
       setGameWon(parsed.data);
     };
@@ -214,6 +261,11 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
         return;
       }
 
+      captureAnalyticsEvent("arena_game_forfeit", {
+        room_code: roomCode,
+        winner_team: parsed.data.winnerTeamId,
+        loser_team: parsed.data.loserTeamId
+      });
       setGameWon(null);
       setGameForfeit(parsed.data);
     };
@@ -363,6 +415,11 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
       return;
     }
 
+    captureAnalyticsEvent("arena_guess_submitted", {
+      room_code: room.roomCode,
+      guess_length: word.length,
+      turn_number: turn?.turnNumber ?? null
+    });
     getSocket().emit("turn:guess", { roomCode: room.roomCode, word });
     setGuessWord("");
   };
@@ -381,6 +438,7 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
     }
 
     setShowGiveUpConfirm(false);
+    captureAnalyticsEvent("arena_give_up_confirmed", { room_code: room.roomCode });
     getSocket().emit("arena:giveUp", { roomCode: room.roomCode });
   };
 
@@ -389,6 +447,7 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
       return;
     }
 
+    captureAnalyticsEvent("arena_restart_requested", { room_code: room.roomCode });
     getSocket().emit("arena:restart", { roomCode: room.roomCode });
   };
 
@@ -423,6 +482,8 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
             saveGuestIdentity(identity);
             setGuest(identity);
             setNeedsGuestName(false);
+            identifyAnalyticsUser(identity, { surface: "arena" });
+            captureAnalyticsEvent("guest_name_saved", { surface: "arena" });
           }}
         />
       ) : null}

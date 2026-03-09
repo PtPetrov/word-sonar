@@ -11,9 +11,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@posthog/react": "^1.8.2",
     "@word-hunt/db": "file:../../packages/db",
     "@word-hunt/shared": "file:../../packages/shared",
     "next": "16.1.6",
+    "posthog-js": "^1.359.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "socket.io-client": "4.8.2",

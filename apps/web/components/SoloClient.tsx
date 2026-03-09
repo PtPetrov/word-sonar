@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { validateServerPayload, type GameWon, type GuessResult, type RoomState } from "@word-hunt/shared";
+import { captureAnalyticsEvent, identifyAnalyticsUser } from "@/lib/analytics";
 import { ensureSoloPlayerIdentity, type GuestIdentity } from "@/lib/guest";
 import { getSocket } from "@/lib/socket";
 
@@ -208,6 +209,8 @@ export function SoloClient() {
   const feedbackTimeoutRef = useRef<number | null>(null);
   const lastSubmittedGuessRef = useRef("");
   const hintUsageDateRef = useRef(currentSofiaDate);
+  const trackedGuessKeysRef = useRef<Set<string>>(new Set());
+  const trackedSoloRoomRef = useRef<string | null>(null);
   const effectiveHintsUsed = hintUsageDateRef.current === currentSofiaDate ? room?.hintsUsed ?? 0 : 0;
   const canRequestHint = Boolean(
     room &&
@@ -269,6 +272,10 @@ export function SoloClient() {
   };
 
   useEffect(() => {
+    identifyAnalyticsUser(guest, { surface: "solo" });
+  }, [guest]);
+
+  useEffect(() => {
     const socket = getSocket();
 
     const onConnect = () => {
@@ -289,6 +296,15 @@ export function SoloClient() {
       const parsed = validateServerPayload("room:state", raw);
       if (parsed.success) {
         const roomChanged = parsed.data.roomCode !== roomCodeRef.current;
+        if (trackedSoloRoomRef.current !== parsed.data.roomCode) {
+          trackedSoloRoomRef.current = parsed.data.roomCode;
+          trackedGuessKeysRef.current.clear();
+          captureAnalyticsEvent("solo_daily_started", {
+            room_code: parsed.data.roomCode,
+            daily_date: parsed.data.dailyDate ?? currentSofiaDate,
+            hints_used: parsed.data.hintsUsed
+          });
+        }
         setRoom(parsed.data);
         hintUsageDateRef.current = currentSofiaDate;
         roomCodeRef.current = parsed.data.roomCode;
@@ -329,6 +345,17 @@ export function SoloClient() {
       clearTransientError();
       setError(null);
 
+      const guessKey = `${parsed.data.byUserId}:${parsed.data.word}:${parsed.data.createdAt}`;
+      if (!trackedGuessKeysRef.current.has(guessKey)) {
+        trackedGuessKeysRef.current.add(guessKey);
+        captureAnalyticsEvent("solo_guess_result", {
+          room_code: roomCodeRef.current,
+          rank: parsed.data.rank,
+          is_duplicate: parsed.data.isDuplicate,
+          turn_number: parsed.data.turnNumber
+        });
+      }
+
       setGuesses((previous) => {
         const alreadyAdded = previous.some((entry) => entry.word === parsed.data.word);
         if (alreadyAdded) {
@@ -352,6 +379,11 @@ export function SoloClient() {
     const onGameWon = (raw: unknown) => {
       const parsed = validateServerPayload("game:won", raw);
       if (parsed.success) {
+        captureAnalyticsEvent("solo_game_won", {
+          room_code: roomCodeRef.current,
+          turns: parsed.data.turns,
+          duration_ms: parsed.data.durationMs
+        });
         setGameWon(parsed.data);
         setRevealedWord(null);
         showFeedback({
@@ -370,6 +402,9 @@ export function SoloClient() {
 
       setShowGiveUpConfirm(false);
       setRevealedWord(parsed.data.word);
+      captureAnalyticsEvent("solo_word_revealed", {
+        room_code: roomCodeRef.current
+      });
     };
 
     const onError = (raw: unknown) => {
@@ -532,6 +567,9 @@ export function SoloClient() {
     }
 
     requestedStartRef.current = true;
+    captureAnalyticsEvent("solo_new_game_requested", {
+      previous_room_code: previousRoomCode
+    });
     socket.emit("solo:startDaily", { user: guest });
   };
 
@@ -540,6 +578,10 @@ export function SoloClient() {
       return;
     }
 
+    captureAnalyticsEvent("solo_hint_requested", {
+      room_code: room.roomCode,
+      hints_used_before: effectiveHintsUsed
+    });
     getSocket().emit("solo:hint", { roomCode: room.roomCode });
   };
 
@@ -556,6 +598,10 @@ export function SoloClient() {
       return;
     }
 
+    captureAnalyticsEvent("solo_reveal_confirmed", {
+      room_code: room.roomCode,
+      guesses: guesses.length
+    });
     getSocket().emit("solo:reveal", { roomCode: room.roomCode });
   };
 
@@ -567,6 +613,11 @@ export function SoloClient() {
     }
 
     lastSubmittedGuessRef.current = word;
+    captureAnalyticsEvent("solo_guess_submitted", {
+      room_code: room.roomCode,
+      guess_length: word.length,
+      guess_number: guesses.length + 1
+    });
     getSocket().emit("turn:guess", { roomCode: room.roomCode, word });
     setGuessWord("");
   };

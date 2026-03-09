@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { DISPLAY_NAME_REGEX, validateServerPayload, type GuestUser } from "@word-hunt/shared";
+import { captureAnalyticsEvent, identifyAnalyticsUser } from "@/lib/analytics";
 import { createGuestIdentity, readGuestIdentity, saveGuestIdentity, type GuestIdentity } from "@/lib/guest";
 import { getSocket } from "@/lib/socket";
 
@@ -39,6 +40,10 @@ export function LobbyClient() {
         return;
       }
 
+      captureAnalyticsEvent("arena_created", {
+        room_code: parsed.data.roomCode,
+        mode: parsed.data.mode
+      });
       setBusy(false);
       setError(null);
       router.push(`/room/${parsed.data.roomCode}?team=A`);
@@ -71,6 +76,8 @@ export function LobbyClient() {
     setGuest(nextIdentity);
     setEditingName(false);
     setError(null);
+    identifyAnalyticsUser(nextIdentity, { surface: "lobby" });
+    captureAnalyticsEvent("guest_name_saved", { surface: "lobby" });
   };
 
   const createArena = () => {
@@ -79,6 +86,10 @@ export function LobbyClient() {
       return;
     }
 
+    captureAnalyticsEvent("arena_create_requested", {
+      mode: "1v1",
+      surface: "lobby"
+    });
     const socket = getSocket();
     if (!socket.connected) {
       socket.connect();
@@ -103,6 +114,10 @@ export function LobbyClient() {
     }
 
     setError(null);
+    captureAnalyticsEvent("arena_join_requested", {
+      room_code: normalized,
+      surface: "lobby"
+    });
     router.push(`/room/${normalized}?team=B`);
   };
 
