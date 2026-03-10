@@ -32,12 +32,11 @@ export default function HomePage() {
     <PageShell className="home-page-shell">
       <section className="home-minimal">
         <div className="home-copy">
-          <h1 className="display home-title">Find the hidden word with semantic radar.</h1>
-          <p className="hero-body home-subtitle">
-            Play solo or challenge a friend. Each guess shows whether you&apos;re
-            getting semantically closer.
+          <h1 className="display home-title">Find the hidden word</h1>
+          <p className="home-rules-preview">
+            Guess a common English word. Each guess shows whether you’re getting
+            closer in meaning. Stronger signal = closer in meaning.
           </p>
-          <p className="home-rules-preview">Guess a word. Read the radar. Find the exact target.</p>
         </div>
 
         <div className="home-radar-wrap">

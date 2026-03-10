@@ -253,6 +253,7 @@ button:hover {
   margin: 0;
   color: rgb(226 255 207 / 88%);
   font-size: 0.92rem;
+  width: 70%;
 }
 
 .home-radar-wrap {
@@ -263,8 +264,9 @@ button:hover {
 
 .home-actions {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  width: min(420px, 82vw);
+  width: min(520px, 82vw);
 }
 
 .home-primary-action {
@@ -432,7 +434,7 @@ button:hover {
 }
 
 .solo-flow {
-  --solo-history-visible-count: 5;
+  --solo-history-visible-count: 10;
   --solo-history-row-gap: 12px;
   --solo-history-row-padding-block: 12px;
   --solo-history-row-padding-inline: 12px;
@@ -446,6 +448,10 @@ button:hover {
   max-height: calc(100svh - 56px);
   padding: 10px 0 calc(16px + env(safe-area-inset-bottom));
   overflow: hidden;
+}
+
+.arena-flow {
+  grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
 }
 
 .lobby-shell {
@@ -619,6 +625,7 @@ button:hover {
   padding: 4px 6px;
   border: 0;
   background: transparent;
+  box-shadow: none;
   color: var(--text-primary);
   opacity: 0.86;
   cursor: pointer;
@@ -632,6 +639,7 @@ button:hover {
   opacity: 1;
   color: var(--color-green-300);
   transform: translateY(-1px);
+  box-shadow: none;
 }
 
 .solo-icon-button.is-active {
@@ -727,13 +735,44 @@ button:hover {
   gap: 0;
 }
 
-.solo-info-button.is-active {
+.solo-inline-info-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  min-height: 14px;
+  margin: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  vertical-align: middle;
+  box-shadow: none;
+}
+
+.solo-info-button.is-active,
+.solo-inline-info-button.is-active {
   background: rgb(152 239 99 / 8%);
 }
 
-.solo-info-button svg {
+.solo-info-button svg,
+.solo-inline-info-button svg {
   width: 16px;
   height: 16px;
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.solo-inline-info-button:hover {
+  color: var(--color-green-300);
+  box-shadow: none;
+  transform: none;
 }
 
 .solo-info-popover {
@@ -750,8 +789,200 @@ button:hover {
 }
 
 .solo-info-title {
-  font-size: 0.98rem;
+  font-size: 0.92rem;
   font-weight: 700;
+}
+
+.solo-info-modal {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: min(540px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  gap: 14px;
+  padding: 20px 18px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.solo-info-modal * {
+  text-align: left;
+}
+
+.solo-info-header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  text-align: left;
+  width: 100%;
+}
+
+.solo-info-header h2 {
+  margin: 0;
+}
+
+.solo-info-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+}
+
+.solo-info-intro p,
+.solo-info-tip {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.solo-info-section {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(191 213 181 / 10%);
+  width: 100%;
+}
+
+.solo-info-header > *,
+.solo-info-section > *,
+.solo-info-intro > *,
+.solo-info-tip {
+  align-self: flex-start;
+}
+
+.solo-info-section-title {
+  margin: 0;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(226 255 207 / 88%);
+}
+
+.solo-info-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+
+.solo-info-step {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid rgb(191 213 181 / 12%);
+  background: rgb(20 25 21 / 0.52);
+}
+
+.solo-info-step strong,
+.solo-info-compare-row strong,
+.solo-info-example-row strong {
+  font-size: 0.88rem;
+}
+
+.solo-info-step span,
+.solo-info-compare-row span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.solo-info-bands,
+.solo-info-compare {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+}
+
+.solo-info-band,
+.solo-info-compare-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid rgb(191 213 181 / 12%);
+  background: rgb(20 25 21 / 0.52);
+  text-align: left;
+}
+
+.solo-info-band {
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.solo-info-band.very-close {
+  border-color: rgb(132 204 116 / 34%);
+  background: rgb(132 204 116 / 12%);
+  color: rgb(238 248 229 / 96%);
+}
+
+.solo-info-band.hot {
+  border-color: rgb(214 137 67 / 34%);
+  background: rgb(214 137 67 / 12%);
+  color: rgb(255 229 205 / 96%);
+}
+
+.solo-info-band.warm {
+  border-color: rgb(226 186 92 / 30%);
+  background: rgb(226 186 92 / 12%);
+  color: rgb(255 240 204 / 96%);
+}
+
+.solo-info-band.cold {
+  border-color: rgb(136 180 255 / 28%);
+  background: rgb(136 180 255 / 10%);
+  color: rgb(222 236 255 / 96%);
+}
+
+.solo-info-example {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid rgb(191 213 181 / 14%);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 1.4%) 0%, transparent 24%),
+    rgb(20 25 21 / 0.62);
+  box-shadow: inset 0 0 0 1px rgb(152 239 99 / 6%);
+}
+
+.solo-info-example-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  font-family: var(--font-mono);
+  flex-wrap: wrap;
+  font-size: 0.84rem;
+}
+
+.solo-info-example-row span {
+  color: var(--text-primary);
+}
+
+.solo-info-tip {
+  font-size: 0.82rem;
+}
+
+.solo-info-modal .button {
+  justify-self: stretch;
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  border-radius: 0;
 }
 
 .radar-stage {
@@ -1018,6 +1249,12 @@ button:hover {
   gap: 12px;
 }
 
+.solo-rules-preview {
+  justify-self: stretch;
+  width: 100%;
+  text-align: left;
+}
+
 .solo-input-form {
   display: grid;
   gap: 12px;
@@ -1043,6 +1280,51 @@ button:hover {
 
 .guess-submit-button:disabled {
   background: transparent;
+}
+
+@media (min-width: 681px) {
+  .solo-flow:not(.arena-flow) .guess-submit-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .solo-flow:not(.arena-flow) .guess-submit-form .solo-input {
+    min-width: 0;
+  }
+
+  .solo-flow:not(.arena-flow) .guess-submit-button {
+    width: auto;
+    min-width: 92px;
+    min-height: 0;
+    height: 100%;
+    padding-inline: 16px;
+  }
+
+  .arena-flow .guess-submit-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .arena-flow .guess-submit-form .solo-input {
+    min-width: 0;
+  }
+
+  .arena-flow .guess-submit-button {
+    width: auto;
+    min-width: 92px;
+    min-height: 0;
+    height: 100%;
+    padding-inline: 16px;
+  }
+
+  .solo-rules-preview {
+    font-size: 0.725rem;
+    white-space: nowrap;
+  }
 }
 
 .solo-toast-banner {
@@ -1129,6 +1411,12 @@ textarea {
   caret-color: var(--color-green-500);
 }
 
+.solo-flow .solo-input,
+.arena-flow .solo-input {
+  border: 1px solid rgb(191 213 181 / 16%);
+  padding: 14px 16px;
+}
+
 .solo-input:focus,
 input:focus,
 select:focus,
@@ -1142,10 +1430,20 @@ a:focus-visible {
 
 .solo-history {
   display: grid;
+  align-content: start;
   gap: 12px;
   min-height: 0;
   max-height: calc(
-    (var(--solo-history-visible-count) * ((var(--solo-history-row-line-height) + (var(--solo-history-row-padding-block) * 2)) + 2px)) +
+    (
+        var(--solo-history-visible-count) *
+          (
+            (
+                var(--solo-history-row-line-height) +
+                  (var(--solo-history-row-padding-block) * 2)
+              ) +
+              2px
+          )
+      ) +
       ((var(--solo-history-visible-count) - 1) * var(--solo-history-row-gap))
   );
   overflow-y: auto;
@@ -1188,16 +1486,38 @@ a:focus-visible {
 .history-list {
   display: flex;
   flex-direction: column;
+  align-self: start;
   gap: var(--solo-history-row-gap);
   width: 100%;
+}
+
+.history-best-banner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  align-self: start;
+  width: fit-content;
+  padding: 4px 8px;
+  border: 1px solid rgb(244 214 110 / 30%);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: rgb(255 241 191 / 96%);
+  background: rgb(244 214 110 / 12%);
 }
 
 .history-row {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  min-height: calc(var(--solo-history-row-line-height) + (var(--solo-history-row-padding-block) * 2) + 2px);
-  padding: var(--solo-history-row-padding-block) var(--solo-history-row-padding-inline);
+  min-height: calc(
+    var(--solo-history-row-line-height) +
+      (var(--solo-history-row-padding-block) * 2) + 2px
+  );
+  padding: var(--solo-history-row-padding-block)
+    var(--solo-history-row-padding-inline);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1205,6 +1525,11 @@ a:focus-visible {
   border: 1px solid rgb(191 213 181 / 16%);
   border-radius: 0;
   background: rgb(20 25 21 / 0.52);
+}
+
+.history-list .history-row:first-child {
+  box-shadow: 3px 6px 10px rgb(244 214 110 / 8%);
+  margin-bottom: 4px;
 }
 
 .history-row::before {
@@ -1229,6 +1554,51 @@ a:focus-visible {
   font-size: 0.95rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.history-row-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.history-proximity-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: 1px solid rgb(191 213 181 / 18%);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  background: rgb(20 25 21 / 42%);
+}
+
+.history-proximity-chip.very-close {
+  border-color: rgb(132 204 116 / 34%);
+  background: rgb(132 204 116 / 14%);
+  color: rgb(238 248 229 / 96%);
+}
+
+.history-proximity-chip.hot {
+  border-color: rgb(214 137 67 / 34%);
+  background: rgb(214 137 67 / 14%);
+  color: rgb(255 229 205 / 96%);
+}
+
+.history-proximity-chip.warm {
+  border-color: rgb(226 186 92 / 30%);
+  background: rgb(226 186 92 / 12%);
+  color: rgb(255 240 204 / 96%);
+}
+
+.history-proximity-chip.cold {
+  border-color: rgb(136 180 255 / 28%);
+  background: rgb(136 180 255 / 10%);
+  color: rgb(222 236 255 / 96%);
 }
 
 .history-row strong {
@@ -1275,6 +1645,19 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
+.solo-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.solo-modal-actions .button {
+  width: 100%;
+  justify-content: center;
+  border-radius: 0;
+}
+
 .solo-confetti {
   position: absolute;
   inset: 0;
@@ -1294,7 +1677,8 @@ a:focus-visible {
     rgb(152 239 99 / 82%) 100%
   );
   opacity: 0;
-  animation: solo-confetti-fall var(--confetti-duration) ease-in var(--confetti-delay) infinite;
+  animation: solo-confetti-fall var(--confetti-duration) ease-in
+    var(--confetti-delay) infinite;
 }
 
 .rank,
@@ -1588,6 +1972,10 @@ input[type="checkbox"] {
 }
 
 @media (max-width: 680px) {
+  .solo-win-overlay {
+    padding: 16px;
+  }
+
   main.page {
     width: calc(100% - 40px);
     padding-top: 12px;
@@ -1640,14 +2028,61 @@ input[type="checkbox"] {
 
   .home-actions {
     width: 100%;
+    grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .home-rules-preview,
+  .solo-rules-preview {
+    font-size: 0.8rem;
   }
 
   .home-radar {
     width: min(280px, 68vw);
   }
 
+  .solo-info-modal {
+    gap: 12px;
+    padding: 16px 14px;
+  }
+
+  .solo-info-section {
+    gap: 7px;
+    padding-top: 10px;
+  }
+
+  .solo-info-step,
+  .solo-info-band,
+  .solo-info-compare-row,
+  .solo-info-example {
+    padding: 7px 9px;
+  }
+
+  .solo-info-title {
+    font-size: 0.88rem;
+  }
+
+  .solo-info-section-title {
+    font-size: 0.72rem;
+  }
+
+  .solo-info-step strong,
+  .solo-info-compare-row strong,
+  .solo-info-example-row strong,
+  .solo-info-band {
+    font-size: 0.84rem;
+  }
+
+  .solo-info-step span,
+  .solo-info-compare-row span,
+  .solo-info-intro p,
+  .solo-info-tip,
+  .solo-info-example-row {
+    font-size: 0.78rem;
+  }
+
   .solo-flow {
+    --solo-history-visible-count: 5;
     --solo-history-row-gap: 6px;
     --solo-history-row-padding-block: 6px;
     gap: 12px;

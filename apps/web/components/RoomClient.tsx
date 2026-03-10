@@ -45,6 +45,19 @@ function getProximity(rank: number): Proximity {
   return "cold";
 }
 
+function proximityChipLabel(proximity: Proximity): string {
+  if (proximity === "very-close") {
+    return "🥵 Very close";
+  }
+  if (proximity === "hot") {
+    return "🔥 Hot";
+  }
+  if (proximity === "warm") {
+    return "🌡️ Warm";
+  }
+  return "❄️ Cold";
+}
+
 function radarRadiusPercentForRank(rank: number, maxRank: number): number {
   const safeRank = Math.min(Math.max(1, rank), maxRank);
 
@@ -84,7 +97,10 @@ function historyFillColor(proximity: Proximity): string {
   if (proximity === "hot") {
     return "rgb(214 137 67 / 0.78)";
   }
-  return "rgb(226 71 144 / 0.8)";
+  if (proximity === "warm") {
+    return "rgb(226 186 92 / 0.72)";
+  }
+  return "rgb(136 180 255 / 0.68)";
 }
 
 type RadarGuess = GuessResult & {
@@ -100,6 +116,7 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
   const [gameWon, setGameWon] = useState<GameWon | null>(null);
   const [gameForfeit, setGameForfeit] = useState<GameForfeit | null>(null);
   const [showGiveUpConfirm, setShowGiveUpConfirm] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [guessWord, setGuessWord] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -494,7 +511,7 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
             <p className="solo-win-kicker">Confirm</p>
             <h2 id="arena-give-up-title">Give up this match?</h2>
             <p>This will end the current 1v1 game immediately.</p>
-            <div className="inline">
+            <div className="solo-modal-actions">
               <button type="button" className="button ghost" onClick={() => setShowGiveUpConfirm(false)}>
                 Cancel
               </button>
@@ -502,6 +519,93 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
                 Give Up
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showInfo ? (
+        <div
+          className="solo-win-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="arena-info-title"
+          onClick={() => setShowInfo(false)}
+        >
+          <div
+            className="solo-win-modal solo-info-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="solo-info-header">
+              <p className="solo-win-kicker">How to play</p>
+              <h2 id="arena-info-title">Find the hidden word</h2>
+            </div>
+
+            <div className="solo-info-intro">
+              <p>Guess a common English word.</p>
+              <p>Each guess tells you how close you are in meaning.</p>
+            </div>
+
+            <section className="solo-info-section" aria-labelledby="arena-info-how-it-works">
+              <h3 id="arena-info-how-it-works" className="solo-info-section-title">
+                How it works
+              </h3>
+              <ol className="solo-info-steps">
+                <li className="solo-info-step">
+                  <strong>Guess a word</strong>
+                  <span>Start with any common English word.</span>
+                </li>
+                <li className="solo-info-step">
+                  <strong>Read the signal</strong>
+                  <span>A stronger signal means you&apos;re closer in meaning.</span>
+                </li>
+                <li className="solo-info-step">
+                  <strong>Find the exact word</strong>
+                  <span>Reach rank #1 to solve it.</span>
+                </li>
+              </ol>
+            </section>
+
+            <section className="solo-info-section" aria-labelledby="arena-info-closeness">
+              <h3 id="arena-info-closeness" className="solo-info-section-title">
+                How close you are
+              </h3>
+              <div className="solo-info-bands">
+                <div className="solo-info-band very-close">🥵 Very close — #1–120</div>
+                <div className="solo-info-band hot">🔥 Hot — #121–700</div>
+                <div className="solo-info-band warm">🌡️ Warm — #701–2500</div>
+                <div className="solo-info-band cold">❄️ Cold — #2501+</div>
+              </div>
+            </section>
+
+            <section className="solo-info-section" aria-labelledby="arena-info-compare">
+              <h3 id="arena-info-compare" className="solo-info-section-title">
+                How your guesses compare
+              </h3>
+              <div className="solo-info-compare">
+                <div className="solo-info-compare-row">
+                  <strong>🏆 Best so far</strong>
+                  <span>your closest guess yet</span>
+                </div>
+                <div className="solo-info-compare-row">
+                  <strong>🥵 Warmer</strong>
+                  <span>better than your previous guess</span>
+                </div>
+                <div className="solo-info-compare-row">
+                  <strong>🥶 Colder</strong>
+                  <span>worse than your previous guess</span>
+                </div>
+              </div>
+            </section>
+
+            <p className="solo-info-tip">Tip: Start broad, then narrow in.</p>
+
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => setShowInfo(false)}
+            >
+              Got it
+            </button>
           </div>
         </div>
       ) : null}
@@ -614,15 +718,36 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
             />
             <button
               type="submit"
-              className="button primary big guess-submit-button"
+              className="button primary big solo-submit guess-submit-button"
               disabled={!guessWord.trim() || !myTurn || Boolean(gameWon) || room?.status !== "in_game"}
             >
               Enter
             </button>
           </form>
+          <p className="home-rules-preview solo-rules-preview">
+            <button
+              type="button"
+              className={`solo-inline-info-button ${showInfo ? "is-active" : ""}`}
+              onClick={() => setShowInfo((current) => !current)}
+              aria-label="Show instructions"
+              title="How to play"
+              aria-pressed={showInfo}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 10v6" />
+                <path d="M12 7h.01" />
+              </svg>
+            </button>{" "}
+            Guess a common English word. Each guess shows whether you’re getting
+            closer in meaning.
+          </p>
         </div>
 
         <section className="solo-history">
+          {sortedGuesses.length > 0 ? (
+            <div className="history-best-banner">🏆 Best so far</div>
+          ) : null}
           <div className="history-list">
             {sortedGuesses.map((guess) => (
               <article
@@ -636,7 +761,12 @@ export function RoomClient({ roomCode, preferredTeam }: RoomClientProps) {
                 }
               >
                 <strong>{guess.word}</strong>
-                <span className="rank">{guess.rank}</span>
+                <div className="history-row-meta">
+                  <span className="rank">#{guess.rank}</span>
+                  <span className={`history-proximity-chip ${guess.proximity}`}>
+                    {proximityChipLabel(guess.proximity)}
+                  </span>
+                </div>
               </article>
             ))}
 
